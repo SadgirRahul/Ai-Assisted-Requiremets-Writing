@@ -1,129 +1,336 @@
-import PyPDF2
-import os
+import argparse
+import io
 import json
+import os
+import sys
+import threading
+from contextlib import redirect_stdout
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+from document_extract import extract_text
 from preprocess import preprocess_pdf_text
 from nlp_extractor import NLPExtractor
 from llm_client import LLMClient
 from requirements_generator import RequirementsGenerator
 
 
-def extract_text_from_pdf(pdf_path):
-    text = ""
-    with open(pdf_path, "rb") as pdf_file:
-        reader = PyPDF2.PdfReader(pdf_file)
-        for page in reader.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n"
-    return text
+def _backend_dir():
+    return os.path.dirname(os.path.abspath(__file__))
 
 
-def main():
+def _load_env():
+    if load_dotenv:
+        load_dotenv(os.path.join(_backend_dir(), ".env"))
+
+
+def pick_input_path_interactive() -> str | None:
+    """Native OS dialog; returns absolute path or None if cancelled."""
+    import tkinter as tk
+    from tkinter import filedialog
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    path = filedialog.askopenfilename(
+        title="Select PDF or Word document",
+        filetypes=[
+            ("PDF and Word", "*.pdf *.docx"),
+            ("PDF files", "*.pdf"),
+            ("Word documents", "*.docx"),
+            ("All files", "*.*"),
+        ],
+    )
+    root.destroy()
+    if not path:
+        return None
+    return os.path.abspath(path)
+
+
+def run_pipeline(input_path: str) -> int:
+    """
+    Run full extract → preprocess → NLP → LLM → JSON.
+    Returns 0 on success, 1 on failure (prints human-readable errors).
+    """
+    script_dir = _backend_dir()
+    input_path = os.path.abspath(input_path)
+
     print("AI-Assisted Requirements Writing System")
     print("=" * 50)
-    
-    # Get the directory where the script is located
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    pdf_path = os.path.join(script_dir, "sample.pdf")
-    
-    # Check if file exists
-    if not os.path.exists(pdf_path):
-        print(f"Error: PDF file not found at {pdf_path}")
-        print("Please make sure sample.pdf is in the same directory as app.py")
-        return
-    
-    # Step 1: Extract text from PDF
-    print("\nStep 1: Extracting text from PDF...")
-    pdf_text = extract_text_from_pdf(pdf_path)
-    print(f"Extracted {len(pdf_text)} characters from PDF")
-    
-    # Step 2: Preprocess the text
-    print("\nStep 2: Preprocessing text...")
-    processed_segments = preprocess_pdf_text(pdf_text)
-    print(f"Processed into {len(processed_segments)} segments")
-    combined_text = " ".join(processed_segments)
-    
-    # Step 3: NLP Processing
-    print("\nStep 3: Performing NLP analysis...")
-    extractor = NLPExtractor()
-    nlp_analysis = extractor.analyze_text(combined_text)
-    
-    print(f"Found {len(nlp_analysis['keywords'])} keywords")
-    print(f"Found {len(nlp_analysis['actions'])} action verbs")
-    print(f"Found {len(nlp_analysis['entities'])} entity types")
-    print(f"Document intent: {nlp_analysis['intent']}")
-    
-    # Step 4: Check LLM setup
-    print("\nStep 4: Setting up LLM...")
+
+    if not os.path.isfile(input_path):
+        print(f"Error: Input file not found: {input_path}")
+        print("Choose a .pdf or .docx file.")
+        return 1
+
+    print("\nStep 0: Checking OpenRouter configuration...")
     llm_client = LLMClient()
     system_status = llm_client.get_system_status()
-    
     if not system_status["model_available"]:
         print("LLM Error:")
         if system_status["error"]:
             print(f"   {system_status['error']}")
         print("\nPlease ensure:")
-        print("1. Ollama is installed and running")
-        print("2. Mistral model is available: 'ollama pull mistral'")
-        return
-    
-    print("LLM system ready")
-    
-    # Step 5: Generate Requirements
-    print("\nStep 5: Generating requirements...")
+        print("1. Set environment variable OPENROUTER_API_KEY (or add it to backend/.env)")
+        print("2. Optional: OPENROUTER_MODEL (default: qwen/qwen3-8b)")
+        print("3. Optional: OPENROUTER_BASE_URL (default: https://openrouter.ai/api/v1)")
+        return 1
+    print(f"OpenRouter ready (model: {system_status['model_name']})")
+
+    print("\nStep 1: Extracting text from document...")
+    try:
+        raw_text = extract_text(input_path)
+    except (ValueError, FileNotFoundError) as e:
+        print(f"Error: {e}")
+        return 1
+
+    if not raw_text or not raw_text.strip():
+        print(
+            "Error: No text could be extracted from the document "
+            "(file may be empty, scanned images only, or unsupported content)."
+        )
+        return 1
+
+    print(f"Extracted {len(raw_text)} characters from {os.path.basename(input_path)}")
+
+    print("\nStep 2: Preprocessing text...")
+    processed_segments = preprocess_pdf_text(raw_text)
+    print(f"Processed into {len(processed_segments)} segments")
+    combined_text = " ".join(processed_segments)
+
+    print("\nStep 3: Performing NLP analysis...")
+    extractor = NLPExtractor()
+    nlp_analysis = extractor.analyze_text(combined_text)
+
+    print(f"Found {len(nlp_analysis['keywords'])} keywords")
+    print(f"Found {len(nlp_analysis['actions'])} action verbs")
+    print(f"Found {len(nlp_analysis['entities'])} entity types")
+    print(f"Document intent: {nlp_analysis['intent']}")
+
+    print("\nStep 4: Generating requirements (OpenRouter)...")
     generator = RequirementsGenerator(llm_client)
     requirements = generator.generate_all_requirements(nlp_analysis, combined_text)
-    
-    # Step 6: Format and Display Results
-    print("\nStep 6: Formatting results...")
+
+    print("\nStep 5: Formatting results...")
     output = generator.format_requirements_output(requirements)
-    
-    # Display summary
+
     print("\n" + "=" * 50)
     print("REQUIREMENTS GENERATION SUMMARY")
     print("=" * 50)
-    
+
     summary = output["summary"]
     print(f"Total Requirements: {summary['total_requirements']}")
     print(f"Functional: {summary['functional_count']}")
     print(f"Non-Functional: {summary['non_functional_count']}")
-    
+
     print("\nPriority Distribution:")
     for priority, count in summary["priorities"].items():
         print(f"  {priority}: {count}")
-    
+
     print("\nCategory Distribution:")
     for category, count in summary["categories"].items():
         print(f"  {category}: {count}")
-    
-    # Display detailed requirements
+
     print("\n" + "=" * 50)
     print("GENERATED REQUIREMENTS")
     print("=" * 50)
-    
-    # Functional requirements
+
     func_reqs = output["requirements"]["functional"]
     if func_reqs:
         print("\nFUNCTIONAL REQUIREMENTS:")
         for req in func_reqs:
             print(f"\n[{req['id']}] {req['priority']} Priority - {req['category']}")
             print(f"    {req['description']}")
-    
-    # Non-functional requirements
+
     nfunc_reqs = output["requirements"]["non_functional"]
     if nfunc_reqs:
         print("\nNON-FUNCTIONAL REQUIREMENTS:")
         for req in nfunc_reqs:
             print(f"\n[{req['id']}] {req['priority']} Priority - {req['category']}")
             print(f"    {req['description']}")
-    
-    # Save to JSON file
+
     output_file = os.path.join(script_dir, "generated_requirements.json")
-    with open(output_file, 'w', encoding='utf-8') as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(output, f, indent=2, ensure_ascii=False)
-    
+
     print(f"\nResults saved to: {output_file}")
     print("\nRequirements generation completed successfully!")
+    return 0
+
+
+def run_gui():
+    """Small window: Browse for PDF/Word, then generate (log in window)."""
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, scrolledtext
+
+    _load_env()
+
+    script_dir = _backend_dir()
+    root = tk.Tk()
+    root.title("AI-Assisted Requirements Writing")
+    root.minsize(560, 420)
+
+    path_var = tk.StringVar()
+    selected: list[str | None] = [None]
+
+    frm = tk.Frame(root, padx=12, pady=10)
+    frm.pack(fill=tk.BOTH, expand=True)
+
+    tk.Label(frm, text="Document (PDF or Word)", font=("Segoe UI", 10, "bold")).pack(
+        anchor=tk.W
+    )
+    path_label = tk.Label(
+        frm,
+        textvariable=path_var,
+        wraplength=520,
+        justify=tk.LEFT,
+        fg="#333",
+    )
+    path_label.pack(fill=tk.X, pady=(4, 8))
+
+    btn_row = tk.Frame(frm)
+    btn_row.pack(fill=tk.X, pady=(0, 8))
+
+    def browse():
+        p = filedialog.askopenfilename(
+            title="Select PDF or Word document",
+            initialdir=os.path.expanduser("~\\Documents"),
+            filetypes=[
+                ("PDF and Word", "*.pdf *.docx"),
+                ("PDF files", "*.pdf"),
+                ("Word documents", "*.docx"),
+                ("All files", "*.*"),
+            ],
+        )
+        if p:
+            selected[0] = os.path.abspath(p)
+            path_var.set(selected[0])
+
+    browse_btn = tk.Button(
+        btn_row,
+        text="Choose PDF or Word file…",
+        command=browse,
+        padx=12,
+        pady=6,
+    )
+    browse_btn.pack(side=tk.LEFT)
+
+    log = scrolledtext.ScrolledText(frm, height=16, wrap=tk.WORD, font=("Consolas", 9))
+    log.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+
+    gen_btn = tk.Button(frm, text="Generate requirements", padx=12, pady=8)
+    gen_btn.pack(pady=(10, 0))
+
+    def set_busy(busy: bool):
+        state = tk.DISABLED if busy else tk.NORMAL
+        browse_btn.config(state=state)
+        gen_btn.config(state=state)
+
+    def append_log(text: str):
+        log.insert(tk.END, text)
+        log.see(tk.END)
+        log.update_idletasks()
+
+    def on_done(buf: str, code: int):
+        set_busy(False)
+        if buf:
+            append_log(buf)
+        out_json = os.path.join(script_dir, "generated_requirements.json")
+        if code == 0:
+            messagebox.showinfo(
+                "Done",
+                f"Requirements saved to:\n{out_json}",
+            )
+        else:
+            messagebox.showerror(
+                "Run failed",
+                "Something went wrong. See the log above for details.",
+            )
+
+    def generate_clicked():
+        p = selected[0]
+        if not p or not os.path.isfile(p):
+            messagebox.showwarning(
+                "No file",
+                "Click “Choose PDF or Word file…” and select a document first.",
+            )
+            return
+        log.delete("1.0", tk.END)
+        set_busy(True)
+
+        def worker():
+            buf = io.StringIO()
+            try:
+                with redirect_stdout(buf):
+                    code = run_pipeline(p)
+            except Exception as e:
+                buf.write(f"\nError: {e}\n")
+                code = 1
+            text = buf.getvalue()
+            root.after(0, lambda: on_done(text, code))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    gen_btn.config(command=generate_clicked)
+
+    tk.Label(
+        frm,
+        text=f"Output file: {os.path.join(script_dir, 'generated_requirements.json')}",
+        font=("Segoe UI", 8),
+        fg="#666",
+    ).pack(anchor=tk.W, pady=(6, 0))
+
+    root.mainloop()
+
+
+def main():
+    _load_env()
+    script_dir = _backend_dir()
+    default_input = os.path.join(script_dir, "sample.pdf")
+
+    parser = argparse.ArgumentParser(
+        description="AI-Assisted Requirements Writing: extract text from PDF or Word, "
+        "then generate requirements via OpenRouter."
+    )
+    parser.add_argument(
+        "--input",
+        "-i",
+        dest="input_path",
+        default=None,
+        help=f"Path to .pdf or .docx file (default: {default_input})",
+    )
+    parser.add_argument(
+        "--pick",
+        "-p",
+        action="store_true",
+        help="Open a file picker, then run in this terminal",
+    )
+    parser.add_argument(
+        "--gui",
+        "-g",
+        action="store_true",
+        help="Open a window with Browse and Generate buttons",
+    )
+    args = parser.parse_args()
+
+    if args.gui:
+        run_gui()
+        return
+
+    if args.pick:
+        picked = pick_input_path_interactive()
+        if not picked:
+            print("No file selected.")
+            sys.exit(0)
+        input_path = picked
+    else:
+        input_path = os.path.abspath(args.input_path or default_input)
+
+    code = run_pipeline(input_path)
+    sys.exit(code)
 
 
 if __name__ == "__main__":

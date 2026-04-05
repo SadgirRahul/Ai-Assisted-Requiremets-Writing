@@ -1,92 +1,169 @@
 """
 llm_client.py
-Module for communicating with Ollama LLM service for requirements generation.
+OpenRouter (OpenAI-compatible) API client for requirements generation.
 """
-import ollama
 import json
+import os
 import time
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+
+import httpx
 import logging
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+DEFAULT_MODEL = "qwen/qwen3-8b"
+
+
+def _strip_json_fences(raw: str) -> str:
+    """Remove markdown code fences and isolate JSON object text."""
+    text = raw.strip()
+    if "```json" in text:
+        start = text.find("```json") + 7
+        end = text.find("```", start)
+        if end != -1:
+            return text[start:end].strip()
+    if "```" in text:
+        start = text.find("```") + 3
+        end = text.find("```", start)
+        if end != -1:
+            return text[start:end].strip()
+    if "{" in text:
+        start = text.find("{")
+        return text[start:].strip()
+    return text
+
+
+def _parse_json_object(text: str) -> Optional[Dict[str, Any]]:
+    """
+    Parse the first complete JSON object from model output (handles markdown and trailing junk).
+    """
+    cleaned = _strip_json_fences(text.strip())
+    start_idx = cleaned.find("{")
+    if start_idx == -1:
+        logger.error("No JSON object found in response")
+        return None
+    brace_count = 0
+    for i, char in enumerate(cleaned[start_idx:], start_idx):
+        if char == "{":
+            brace_count += 1
+        elif char == "}":
+            brace_count -= 1
+            if brace_count == 0:
+                fragment = cleaned[start_idx : i + 1]
+                try:
+                    return json.loads(fragment)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse LLM JSON object: {e}")
+                    return None
+    try:
+        return json.loads(cleaned[start_idx:])
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse LLM response as JSON: {e}")
+        return None
+
+
 class LLMClient:
-    def __init__(self, model_name: str = "llama3.2:3b"):
-        """Initialize LLM client with specified model"""
-        self.model_name = model_name
-        self.client = ollama.Client()
-        
-    def check_model_availability(self) -> bool:
-        """Check if the specified model is available"""
-        try:
-            models = self.client.list()
-            available_models = [model['name'] for model in models['models']]
-            return self.model_name in available_models
-        except Exception as e:
-            logger.error(f"Error checking model availability: {e}")
-            return False
-    
-    def check_ollama_connection(self) -> bool:
-        """Check if Ollama service is running"""
-        try:
-            self.client.list()
-            return True
-        except Exception as e:
-            logger.error(f"Error connecting to Ollama: {e}")
-            return False
-    
+    """Chat completions via OpenRouter."""
+
+    def __init__(
+        self,
+        model_name: Optional[str] = None,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ):
+        self.model_name = model_name or os.environ.get(
+            "OPENROUTER_MODEL", DEFAULT_MODEL
+        )
+        self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
+        self.base_url = (base_url or os.environ.get(
+            "OPENROUTER_BASE_URL", DEFAULT_BASE_URL
+        )).rstrip("/")
+
+    def _headers(self) -> Dict[str, str]:
+        h = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        referer = os.environ.get("OPENROUTER_HTTP_REFERER")
+        if referer:
+            h["HTTP-Referer"] = referer
+        title = os.environ.get("OPENROUTER_APP_TITLE", "AI-Assisted Requirement Writing")
+        h["X-Title"] = title
+        return h
+
+    def check_api_key_configured(self) -> bool:
+        return bool(self.api_key and self.api_key.strip())
+
     def generate_response(self, prompt: str, max_retries: int = 3) -> Optional[str]:
-        """Generate response from LLM with retry logic"""
+        """Call chat/completions; return assistant content (JSON-oriented text)."""
+        if not self.check_api_key_configured():
+            logger.error("OPENROUTER_API_KEY is not set")
+            return None
+
+        url = f"{self.base_url}/chat/completions"
+        payload = {
+            "model": self.model_name,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a requirements engineering assistant. "
+                        "Follow the user instructions exactly. "
+                        "Respond with only valid JSON as specified, no extra commentary."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.3,
+            "top_p": 0.9,
+            "max_tokens": 4096,
+        }
+
         for attempt in range(max_retries):
             try:
-                response = self.client.generate(
-                    model=self.model_name,
-                    prompt=prompt,
-                    options={
-                        'temperature': 0.3,  # Lower temperature for more consistent output
-                        'top_p': 0.9,
-                        'max_tokens': 2000
-                    }
-                )
-                raw_response = response['response'].strip()
-                
-                # Clean response - remove markdown code blocks and extra text
-                if '```json' in raw_response:
-                    # Extract JSON from markdown code block
-                    start = raw_response.find('```json') + 7
-                    end = raw_response.find('```', start)
-                    if end != -1:
-                        json_text = raw_response[start:end].strip()
-                        return json_text
-                elif '```' in raw_response:
-                    # Extract content from any code block
-                    start = raw_response.find('```') + 3
-                    end = raw_response.find('```', start)
-                    if end != -1:
-                        json_text = raw_response[start:end].strip()
-                        return json_text
-                elif '{' in raw_response:
-                    # Find first { and extract JSON from there
-                    start = raw_response.find('{')
-                    if start != -1:
-                        json_text = raw_response[start:].strip()
-                        return json_text
-                
-                # Return cleaned response
+                with httpx.Client(timeout=120.0) as client:
+                    r = client.post(url, headers=self._headers(), json=payload)
+                    r.raise_for_status()
+                    data = r.json()
+                choices = data.get("choices") or []
+                if not choices:
+                    logger.error("OpenRouter returned no choices")
+                    return None
+                message = choices[0].get("message") or {}
+                raw_response = (message.get("content") or "").strip()
+                if not raw_response:
+                    return None
                 return raw_response
-                
+            except httpx.HTTPStatusError as e:
+                logger.error(
+                    "Attempt %s failed: HTTP %s %s",
+                    attempt + 1,
+                    e.response.status_code,
+                    e.response.text[:500] if e.response.text else "",
+                )
+                if attempt < max_retries - 1:
+                    time.sleep(2**attempt)
+                else:
+                    return None
             except Exception as e:
                 logger.error(f"Attempt {attempt + 1} failed: {e}")
                 if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)  # Exponential backoff
+                    time.sleep(2**attempt)
                 else:
-                    logger.error(f"All {max_retries} attempts failed")
                     return None
-    
-    def generate_functional_requirements(self, entities: Dict, actions: List[str], keywords: List[str], context: str) -> List[Dict]:
-        """Generate functional requirements based on extracted information"""
+        return None
+
+    def generate_functional_requirements(
+        self,
+        entities: Dict,
+        actions: List[str],
+        keywords: List[str],
+        context: str,
+    ) -> List[Dict]:
+        """Generate functional requirements based on extracted information."""
         prompt = f"""
 You are a requirements engineering expert. Generate ONLY FUNCTIONAL requirements based on the extracted information.
 
@@ -133,42 +210,20 @@ Return only a JSON array with this structure:
     ]
 }}
 """
-        
+
         response = self.generate_response(prompt)
-        if response:
-            try:
-                # Clean response - find the main JSON object
-                cleaned_response = response.strip()
-                
-                # Find the start and end of the main JSON object
-                start_idx = cleaned_response.find('{')
-                if start_idx == -1:
-                    logger.error("No JSON object found in response")
-                    return []
-                
-                # Count braces to find the matching closing brace
-                brace_count = 0
-                for i, char in enumerate(cleaned_response[start_idx:], start_idx):
-                    if char == '{':
-                        brace_count += 1
-                    elif char == '}':
-                        brace_count -= 1
-                        if brace_count == 0:
-                            # Found the matching closing brace
-                            cleaned_response = cleaned_response[start_idx:i+1]
-                            break
-                
-                # Parse JSON response
-                result = json.loads(cleaned_response)
-                return result.get('functional_requirements', [])
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse LLM response as JSON: {e}")
-                logger.error(f"Response was: {response}")
-                return []
-        return []
-    
-    def generate_non_functional_requirements(self, keywords: List[str], context: str, entities: Dict) -> List[Dict]:
-        """Generate non-functional requirements (performance, security, usability, etc.)"""
+        if not response:
+            return []
+        result = _parse_json_object(response)
+        if not result:
+            logger.error(f"Response was: {response[:2000]}")
+            return []
+        return result.get("functional_requirements", [])
+
+    def generate_non_functional_requirements(
+        self, keywords: List[str], context: str, entities: Dict
+    ) -> List[Dict]:
+        """Generate non-functional requirements (performance, security, usability, etc.)."""
         prompt = f"""
 You are a requirements engineering expert. Generate ONLY NON-FUNCTIONAL requirements based on the extracted information.
 
@@ -221,51 +276,37 @@ Return only a JSON array with this structure:
     ]
 }}
 """
-        
+
         response = self.generate_response(prompt)
-        if response:
-            try:
-                result = json.loads(response)
-                return result.get('non_functional_requirements', [])
-            except json.JSONDecodeError:
-                logger.error("Failed to parse LLM response as JSON")
-                return []
-        return []
-    
+        if not response:
+            return []
+        result = _parse_json_object(response)
+        if not result:
+            logger.error("Failed to parse LLM response as JSON")
+            logger.error(f"Response was: {response[:2000]}")
+            return []
+        return result.get("non_functional_requirements", [])
+
     def get_system_status(self) -> Dict[str, Any]:
-        """Get comprehensive system status"""
-        status = {
-            "ollama_connected": False,
+        """Status for CLI; compatible with app.py keys."""
+        status: Dict[str, Any] = {
             "model_available": False,
             "model_name": self.model_name,
-            "error": None
+            "error": None,
         }
-        
-        if not self.check_ollama_connection():
-            status["error"] = "Ollama service is not running"
+        if not self.check_api_key_configured():
+            status["error"] = (
+                "OPENROUTER_API_KEY is not set. Export it or add it to a .env file."
+            )
             return status
-        
-        status["ollama_connected"] = True
-        
-        if not self.check_model_availability():
-            status["error"] = f"Model '{self.model_name}' is not available"
-            return status
-        
         status["model_available"] = True
         return status
 
 
-# Test function
 if __name__ == "__main__":
     client = LLMClient()
-    
-    # Check system status
-    status = client.get_system_status()
     print("=== LLM System Status ===")
-    print(json.dumps(status, indent=2))
-    
-    if status["model_available"]:
-        # Test simple generation
-        test_prompt = "Generate a simple software requirement for user login."
-        response = client.generate_response(test_prompt)
-        print(f"\nTest Response: {response}")
+    print(json.dumps(client.get_system_status(), indent=2))
+    if client.get_system_status().get("model_available"):
+        out = client.generate_response('Reply with JSON: {"ok": true}')
+        print(f"\nTest: {out}")

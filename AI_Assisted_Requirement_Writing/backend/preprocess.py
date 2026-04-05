@@ -20,7 +20,7 @@ def segment_text(text: str) -> List[str]:
     return [s.strip() for s in sentences if s.strip()]
 
 def preprocess_pdf_text(raw_text: str) -> List[str]:
-    """Full preprocessing pipeline: clean and segment text."""
+    """Full preprocessing pipeline: clean and segment text (any source: PDF, Word, etc.)."""
     cleaned = clean_text(raw_text)
     segments = segment_text(cleaned)
     return segments
