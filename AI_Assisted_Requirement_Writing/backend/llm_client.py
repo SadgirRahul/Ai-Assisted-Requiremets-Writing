@@ -16,6 +16,22 @@ logger = logging.getLogger(__name__)
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MODEL = "qwen/qwen3-8b"
 
+# Injected into user prompts so priorities are varied and meaningful (not all "High").
+PRIORITY_RULES_BLOCK = """
+PRIORITY RULES (each requirement MUST have exactly one of: "High", "Medium", "Low"):
+
+- High: Use only for regulatory/legal/safety-critical, security that prevents breach or fraud,
+  authentication/authorization for protected data, payments/settlement, or capabilities the CONTEXT
+  marks as mandatory/critical/essential (e.g. "must", "shall not launch without").
+- Medium: Important for correct operation or major user value, but not catastrophic if phased
+  (e.g. core workflows, reporting, most integrations).
+- Low: Nice-to-have, cosmetic, optional enhancements, or lower business risk items.
+
+DISTRIBUTION: Across this batch, at most about 40% of items may be High unless the CONTEXT is
+dominated by mandatory/legal/security language. Include at least one Medium and one Low when
+you output 5 or more requirements. Do not label everything High.
+"""
+
 
 def _strip_json_fences(raw: str) -> str:
     """Remove markdown code fences and isolate JSON object text."""
@@ -198,7 +214,9 @@ DO NOT include:
 - Usability descriptions (easy to use, interface)
 - Reliability requirements (uptime, availability)
 
-Return only a JSON array with this structure:
+{PRIORITY_RULES_BLOCK}
+
+Return only a JSON object with this structure (priorities must vary realistically):
 {{
     "functional_requirements": [
         {{
@@ -206,6 +224,18 @@ Return only a JSON array with this structure:
             "description": "The system shall allow users to create an account.",
             "priority": "High",
             "category": "User Account Management"
+        }},
+        {{
+            "id": "FR-002",
+            "description": "Users shall be able to browse products by category.",
+            "priority": "Medium",
+            "category": "Product Catalog"
+        }},
+        {{
+            "id": "FR-003",
+            "description": "The system shall offer optional product recommendations on the home page.",
+            "priority": "Low",
+            "category": "Product Catalog"
         }}
     ]
 }}
@@ -264,14 +294,28 @@ DO NOT include:
 - Business functionalities
 - System behaviors
 
-Return only a JSON array with this structure:
+{PRIORITY_RULES_BLOCK}
+
+Return only a JSON object with this structure (priorities must vary realistically):
 {{
     "non_functional_requirements": [
         {{
             "id": "NFR-001",
-            "description": "The system shall respond to user requests within 2 seconds.",
+            "description": "The system shall encrypt sensitive data at rest and in transit.",
             "priority": "High",
+            "category": "Security"
+        }},
+        {{
+            "id": "NFR-002",
+            "description": "The system shall respond to typical user actions within 2 seconds under normal load.",
+            "priority": "Medium",
             "category": "Performance"
+        }},
+        {{
+            "id": "NFR-003",
+            "description": "The system shall support optional dark mode for the user interface.",
+            "priority": "Low",
+            "category": "Usability"
         }}
     ]
 }}

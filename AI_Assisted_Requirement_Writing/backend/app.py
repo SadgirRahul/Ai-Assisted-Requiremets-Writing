@@ -17,6 +17,9 @@ from nlp_extractor import NLPExtractor
 from llm_client import LLMClient
 from requirements_generator import RequirementsGenerator
 
+# Default document shipped with the repo (same folder as app.py).
+DEFAULT_INPUT_FILE = "sample.pdf"
+
 
 def _backend_dir():
     return os.path.dirname(os.path.abspath(__file__))
@@ -60,6 +63,7 @@ def run_pipeline(input_path: str) -> int:
 
     print("AI-Assisted Requirements Writing System")
     print("=" * 50)
+    print(f"Input document: {input_path}")
 
     if not os.path.isfile(input_path):
         print(f"Error: Input file not found: {input_path}")
@@ -289,18 +293,40 @@ def run_gui():
 def main():
     _load_env()
     script_dir = _backend_dir()
-    default_input = os.path.join(script_dir, "sample.pdf")
+    default_input = os.path.join(script_dir, DEFAULT_INPUT_FILE)
+
+    epilog = f"""
+Commands — how to choose the input file:
+  Default (repo sample)
+      python app.py
+      Uses "{DEFAULT_INPUT_FILE}" in this folder: {script_dir}
+
+  Specific path
+      python app.py --input "C:\\path\\to\\document.pdf"
+      python app.py -i "C:\\path\\to\\spec.docx"
+
+  File picker (dialog), then run in this terminal
+      python app.py --pick
+      python app.py -p
+
+  Window with Browse + Generate buttons
+      python app.py --gui
+      python app.py -g
+"""
 
     parser = argparse.ArgumentParser(
         description="AI-Assisted Requirements Writing: extract text from PDF or Word, "
-        "then generate requirements via OpenRouter."
+        "then generate requirements via OpenRouter.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=epilog,
     )
     parser.add_argument(
         "--input",
         "-i",
         dest="input_path",
         default=None,
-        help=f"Path to .pdf or .docx file (default: {default_input})",
+        metavar="PATH",
+        help=f"Path to .pdf or .docx (default if omitted: {DEFAULT_INPUT_FILE} next to app.py)",
     )
     parser.add_argument(
         "--pick",
@@ -327,7 +353,18 @@ def main():
             sys.exit(0)
         input_path = picked
     else:
+        using_default = args.input_path is None
         input_path = os.path.abspath(args.input_path or default_input)
+        if using_default and not os.path.isfile(input_path):
+            print(
+                f"Error: Default input not found: {input_path}\n"
+                f"Add {DEFAULT_INPUT_FILE} next to app.py, or use:\n"
+                "  --input PATH   for a specific file\n"
+                "  --pick / -p    for a file picker\n"
+                "  --gui / -g     for a window with Browse\n"
+                "Run: python app.py --help"
+            )
+            sys.exit(1)
 
     code = run_pipeline(input_path)
     sys.exit(code)

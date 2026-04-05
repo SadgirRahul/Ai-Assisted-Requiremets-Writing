@@ -9,6 +9,20 @@ import uuid
 from datetime import datetime
 from llm_client import LLMClient
 
+
+def _canonical_priority(raw: Any) -> Optional[str]:
+    """Map LLM strings to High | Medium | Low; None if invalid."""
+    if not isinstance(raw, str):
+        return None
+    m = raw.strip().lower()
+    if m in ("high", "h", "p0", "p1", "critical", "must-have"):
+        return "High"
+    if m in ("medium", "med", "p2", "should", "normal"):
+        return "Medium"
+    if m in ("low", "l", "p3", "optional", "nice", "nice-to-have", "could"):
+        return "Low"
+    return None
+
 @dataclass
 class Requirement:
     """Structure for individual requirements"""
@@ -49,7 +63,11 @@ class RequirementsGenerator:
         description_lower = description.lower()
         keywords_lower = [kw.lower() for kw in keywords]
         
-        high_priority_keywords = ['security', 'authentication', 'critical', 'must', 'essential', 'core']
+        high_priority_keywords = [
+            'security', 'authentication', 'critical', 'must', 'essential', 'core',
+            'legal', 'regulatory', 'compliance', 'payment', 'encrypt', 'privacy',
+            'breach', 'fraud', 'safety', 'mandatory',
+        ]
         medium_priority_keywords = ['should', 'important', 'significant', 'key']
         
         # Check for high priority indicators
@@ -112,6 +130,67 @@ class RequirementsGenerator:
                 best_category = category
         
         return best_category
+
+    def _importance_score(self, description: str, category: str, req_type: str) -> int:
+        """Higher score = more deserving of High after LLM returns flat priorities."""
+        d = description.lower()
+        s = 0
+        for kw in (
+            "legal", "regulatory", "compliance", "gdpr", "hipaa", "pci",
+            "safety", "fraud", "breach", "authentication", "authorization",
+            "encrypt", "payment", "billing", "settlement",
+        ):
+            if kw in d:
+                s += 4
+        for kw in ("must not", "critical", "essential", "mandatory"):
+            if kw in d:
+                s += 3
+        if category in (
+            "Security", "Payment Processing", "Compliance", "Data Privacy",
+            "Reliability", "System Availability",
+        ):
+            s += 2
+        if req_type == "non-functional" and category == "Security":
+            s += 1
+        for kw in ("should", "important", "significant"):
+            if kw in d:
+                s += 1
+        if "optional" in d or "nice " in d or "may " in d:
+            s -= 2
+        return s
+
+    def _redistribute_if_flat_or_topheavy(self, reqs: List[Requirement]) -> None:
+        """
+        If every item is High, or High share exceeds ~40% (batch size >= 4), cap High at ~40%
+        and assign Medium/Low by importance score. Mutates reqs in place.
+        """
+        n = len(reqs)
+        if n < 3:
+            return
+        high_count = sum(1 for r in reqs if r.priority == "High")
+        share = high_count / n
+        if high_count < n and share <= 0.4:
+            return
+        scored = [
+            (self._importance_score(r.description, r.category, r.type), i)
+            for i, r in enumerate(reqs)
+        ]
+        scored.sort(key=lambda x: (-x[0], x[1]))
+        ordered_indices = [i for _, i in scored]
+        high_cap = max(1, min(int(n * 0.4), n - 2))
+        med_count = max(1, (n - high_cap) // 2)
+        low_count = n - high_cap - med_count
+        if low_count < 1:
+            high_cap = max(1, n - med_count - 1)
+            low_count = 1
+            med_count = n - high_cap - low_count
+        for k, idx in enumerate(ordered_indices):
+            if k < high_cap:
+                reqs[idx].priority = "High"
+            elif k < high_cap + med_count:
+                reqs[idx].priority = "Medium"
+            else:
+                reqs[idx].priority = "Low"
     
     def process_llm_requirements(self, llm_requirements: List[Dict], req_type: str, keywords: List[str]) -> List[Requirement]:
         """Process LLM-generated requirements into structured format"""
@@ -127,12 +206,13 @@ class RequirementsGenerator:
                 if not description:
                     continue
                 
-                # Determine priority
-                priority = req_data.get('priority', self.determine_priority(description, keywords))
-                
-                # Categorize requirement
                 category = req_data.get('category', self.categorize_requirement(description, req_type))
-                
+                canon = _canonical_priority(req_data.get("priority"))
+                if canon is None:
+                    priority = self.determine_priority(description, keywords)
+                else:
+                    priority = canon
+
                 # Create requirement object
                 requirement = Requirement(
                     id=req_id,
@@ -149,7 +229,8 @@ class RequirementsGenerator:
             except Exception as e:
                 print(f"Error processing requirement: {e}")
                 continue
-        
+
+        self._redistribute_if_flat_or_topheavy(processed_requirements)
         return processed_requirements
     
     def generate_functional_requirements(self, entities: Dict, actions: List[str], keywords: List[str], context: str) -> List[Requirement]:
