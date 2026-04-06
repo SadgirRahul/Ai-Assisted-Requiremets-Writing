@@ -1,0 +1,166 @@
+.file-upload-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Drop zone */
+.drop-zone {
+  border: 2px dashed #4a90d9;
+  border-radius: 12px;
+  padding: 40px 20px;
+  text-align: center;
+  cursor: pointer;
+  background: #f8fbff;
+  transition: background 0.2s, border-color 0.2s;
+  user-select: none;
+}
+
+.drop-zone:hover,
+.drop-zone.drag-over {
+  background: #e8f2ff;
+  border-color: #1a73e8;
+}
+
+.drop-zone.disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.drop-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.drop-zone p {
+  font-size: 1rem;
+  color: #333;
+  margin-bottom: 6px;
+  word-break: break-all;
+}
+
+.file-hint {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+/* Selected file info bar */
+.selected-file-info {
+  background: #e8f5e9;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 0.9rem;
+  color: #2e7d32;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-size {
+  color: #888;
+  font-size: 0.8rem;
+  flex: 1;
+}
+
+.remove-btn {
+  background: none;
+  border: none;
+  color: #c0392b;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.remove-btn:hover {
+  background: #fde8e8;
+}
+
+/* Loading section */
+.loading-section {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: #f0f4ff;
+  border-radius: 10px;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #d0e2ff;
+  border-top-color: #1a73e8;
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.loading-status {
+  font-size: 0.9rem;
+  color: #1a73e8;
+  font-weight: 500;
+}
+
+/* Progress bar */
+.progress-bar-wrapper {
+  background: #d0e2ff;
+  border-radius: 6px;
+  height: 6px;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #1a73e8, #0d47a1);
+  transition: width 0.3s;
+  border-radius: 6px;
+}
+
+.progress-label {
+  font-size: 0.75rem;
+  color: #555;
+  margin-top: 2px;
+  display: block;
+  text-align: right;
+}
+
+/* Generate button */
+.generate-btn {
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(135deg, #1a73e8, #0d47a1);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  letter-spacing: 0.3px;
+}
+
+.generate-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(26, 115, 232, 0.4);
+}
+
+.generate-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}

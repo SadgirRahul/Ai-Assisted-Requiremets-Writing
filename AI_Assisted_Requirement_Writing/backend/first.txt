@@ -1,0 +1,2 @@
+cd F:\EDAI\AI_Assisted_Requirement_Writing\backend
+F:\EDAI\.venv\Scripts\python.exe app.py --gui
