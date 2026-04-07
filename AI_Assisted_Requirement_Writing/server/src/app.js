@@ -51,7 +51,7 @@ if (MONGO_URI) {
     .catch((err) => console.error("MongoDB connection error:", err));
 }
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Accepting requests from: ${CLIENT_URL}`);
 });
