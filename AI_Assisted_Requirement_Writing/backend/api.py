@@ -13,7 +13,7 @@ try:
 except ImportError:
     load_dotenv = None
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -75,7 +75,13 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     @app.post("/api/generate")
-    async def generate(file: UploadFile = File(...)):
+    async def generate(
+        file: UploadFile = File(...),
+        domain: str | None = Form(None),
+    ):
+        # Multipart form field `domain` (same role as Flask request.form.get("domain"))
+        domain_value = (domain or "").strip() or None
+
         if not file.filename:
             raise HTTPException(status_code=400, detail="No file uploaded.")
 
@@ -106,7 +112,7 @@ def create_app() -> FastAPI:
             ) from e
 
         try:
-            output, err = run_generation_from_path(tmp_path)
+            output, err = run_generation_from_path(tmp_path, domain=domain_value)
         finally:
             try:
                 os.unlink(tmp_path)

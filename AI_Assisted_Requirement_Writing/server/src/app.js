@@ -9,10 +9,41 @@ const requirementsRoutes = require("./routes/requirementsRoutes");
 const app = express();
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI;
-const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
+
+function isConfiguredMongoUri(uri) {
+  return (
+    typeof uri === "string" &&
+    uri.length > 0 &&
+    (uri.startsWith("mongodb://") || uri.startsWith("mongodb+srv://"))
+  );
+}
+
+/** Local dev origins (Vite may use 3001+ if 3000 is busy). CLIENT_URL can add more (comma-separated). */
+const DEFAULT_DEV_ORIGINS = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:3001",
+  "http://127.0.0.1:3001",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+];
+const extraFromEnv = (process.env.CLIENT_URL || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const allowedOrigins = [...new Set([...DEFAULT_DEV_ORIGINS, ...extraFromEnv])];
 
 // Middleware
-app.use(cors({ origin: CLIENT_URL }));
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      callback(null, false);
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -39,12 +70,14 @@ app.use((req, res) => {
 // Global error handler
 app.use((err, req, res, next) => {
   console.error("[Global Error]", err.message);
-  const status = err.status || 500;
+  const status =
+    err.status ||
+    (err.name === "MulterError" ? 400 : 500);
   res.status(status).json({ error: err.message || "Internal server error" });
 });
 
-// MongoDB connection (optional)
-if (MONGO_URI) {
+// MongoDB connection (optional — skip placeholders like .env examples)
+if (isConfiguredMongoUri(MONGO_URI)) {
   mongoose
     .connect(MONGO_URI)
     .then(() => console.log("MongoDB connected"))
@@ -53,5 +86,5 @@ if (MONGO_URI) {
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Accepting requests from: ${CLIENT_URL}`);
+  console.log(`CORS allowed origins: ${allowedOrigins.join(", ")}`);
 });

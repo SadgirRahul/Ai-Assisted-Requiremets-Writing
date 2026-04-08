@@ -18,12 +18,35 @@
   margin: 0 auto;
 }
 
+.home-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
 .home-title {
-  margin: 0 0 6px;
+  margin: 0;
   font-size: 1.6rem;
   font-weight: 800;
   color: #ffffff;
   letter-spacing: -0.02em;
+}
+
+.home-domain-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 14px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #e0e7ff;
+  background: rgba(37, 99, 235, 0.35);
+  border: 1px solid rgba(96, 165, 250, 0.55);
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
 .home-subtitle {
@@ -106,6 +129,37 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.view-toggle {
+  display: inline-flex;
+  border: 1.5px solid #d1d5db;
+  border-radius: 999px;
+  padding: 2px;
+  background: #f8fafc;
+  gap: 2px;
+}
+
+.view-toggle-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.view-toggle-btn:hover {
+  color: #374151;
+}
+
+.view-toggle-btn.active {
+  background: #2563eb;
+  color: #ffffff;
 }
 
 .panel-body {

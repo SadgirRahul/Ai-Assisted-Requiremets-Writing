@@ -233,7 +233,14 @@ class RequirementsGenerator:
         self._redistribute_if_flat_or_topheavy(processed_requirements)
         return processed_requirements
     
-    def generate_functional_requirements(self, entities: Dict, actions: List[str], keywords: List[str], context: str) -> List[Requirement]:
+    def generate_functional_requirements(
+        self,
+        entities: Dict,
+        actions: List[str],
+        keywords: List[str],
+        context: str,
+        domain: Optional[str] = None,
+    ) -> List[Requirement]:
         """Generate functional requirements using LLM"""
         print("Generating functional requirements...")
         
@@ -242,7 +249,8 @@ class RequirementsGenerator:
             entities=entities,
             actions=actions,
             keywords=keywords,
-            context=context
+            context=context,
+            domain=domain,
         )
         
         if not llm_requirements:
@@ -255,7 +263,13 @@ class RequirementsGenerator:
         
         return processed_reqs
     
-    def generate_non_functional_requirements(self, keywords: List[str], context: str, entities: Dict) -> List[Requirement]:
+    def generate_non_functional_requirements(
+        self,
+        keywords: List[str],
+        context: str,
+        entities: Dict,
+        domain: Optional[str] = None,
+    ) -> List[Requirement]:
         """Generate non-functional requirements using LLM"""
         print("Generating non-functional requirements...")
         
@@ -263,7 +277,8 @@ class RequirementsGenerator:
         llm_requirements = self.llm_client.generate_non_functional_requirements(
             keywords=keywords,
             context=context,
-            entities=entities
+            entities=entities,
+            domain=domain,
         )
         
         if not llm_requirements:
@@ -276,7 +291,12 @@ class RequirementsGenerator:
         
         return processed_reqs
     
-    def generate_all_requirements(self, nlp_analysis: Dict, context: str) -> Dict[str, List[Requirement]]:
+    def generate_all_requirements(
+        self,
+        nlp_analysis: Dict,
+        context: str,
+        domain: Optional[str] = None,
+    ) -> Dict[str, List[Requirement]]:
         """Generate all requirements from NLP analysis"""
         print("\nStarting requirements generation...")
         
@@ -290,14 +310,16 @@ class RequirementsGenerator:
             entities=entities,
             actions=actions,
             keywords=keywords,
-            context=context
+            context=context,
+            domain=domain,
         )
         
         # Generate non-functional requirements
         non_functional_reqs = self.generate_non_functional_requirements(
             keywords=keywords,
             context=context,
-            entities=entities
+            entities=entities,
+            domain=domain,
         )
         
         return {

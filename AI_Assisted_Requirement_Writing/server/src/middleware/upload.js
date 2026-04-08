@@ -11,7 +11,9 @@ const fileFilter = (req, file, cb) => {
   if (ALLOWED_TYPES.includes(ext)) {
     cb(null, true);
   } else {
-    cb(new Error(`Only ${ALLOWED_TYPES.join(", ")} files are allowed`), false);
+    const err = new Error(`Only ${ALLOWED_TYPES.join(", ")} files are allowed`);
+    err.status = 400;
+    cb(err, false);
   }
 };
 

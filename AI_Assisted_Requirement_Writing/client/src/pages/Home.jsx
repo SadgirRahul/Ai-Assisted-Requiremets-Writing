@@ -1,12 +1,18 @@
 import React, { useState, useCallback } from "react";
+import DomainSelect, { DOMAIN_OPTIONS } from "../components/DomainSelect";
 import FileUpload from "../components/FileUpload";
 import RequirementsOutput from "../components/RequirementsOutput";
 import "./Home.css";
 
 // Status values: 'idle' | 'loading' | 'success'
 const STATUS = { IDLE: "idle", LOADING: "loading", SUCCESS: "success" };
+const OUTPUT_VIEW = { LIST: "list", TREE: "tree" };
 
 const Home = () => {
+  const [selectedDomain, setSelectedDomain] = useState(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const [outputView, setOutputView] = useState(OUTPUT_VIEW.LIST);
+
   const [requirements, setRequirements] = useState(null);
   const [error, setError]               = useState(null);
   const [status, setStatus]             = useState(STATUS.IDLE);
@@ -44,6 +50,9 @@ const Home = () => {
 
   // Clear everything and start fresh
   const handleReset = () => {
+    setSelectedDomain(null);
+    setShowUpload(false);
+    setOutputView(OUTPUT_VIEW.LIST);
     setRequirements(null);
     setError(null);
     setStatus(STATUS.IDLE);
@@ -61,12 +70,24 @@ const Home = () => {
 
   const { label, badge, icon } = outputHeading();
 
+  const domainBadgeLabel = DOMAIN_OPTIONS.find((d) => d.id === selectedDomain)?.name;
+
   return (
     <div className="home-page">
       {/* ── Page header ───────────────────────────── */}
       <header className="home-header">
         <div className="home-header-inner">
-          <h1 className="home-title">AI Requirements Generator</h1>
+          <div className="home-title-row">
+            <h1 className="home-title">AI Requirements Generator</h1>
+            {status === STATUS.SUCCESS && domainBadgeLabel ? (
+              <span
+                className="home-domain-badge"
+                title="Domain context used for this generation"
+              >
+                {domainBadgeLabel}
+              </span>
+            ) : null}
+          </div>
           <p className="home-subtitle">
             Upload a project document (PDF / DOCX) and let AI extract structured
             functional &amp; non-functional requirements.
@@ -90,8 +111,8 @@ const Home = () => {
         {/* Input Panel */}
         <section className="panel input-panel" aria-label="Input section">
           <div className="panel-header">
-            <h2>📂 Input</h2>
-            {(requirements || error) && (
+            <h2>{showUpload ? "📂 Upload document" : "🧭 Choose domain"}</h2>
+            {(requirements || error || showUpload || selectedDomain) && (
               <button className="reset-btn" onClick={handleReset} title="Start over">
                 ↺ Reset
               </button>
@@ -99,11 +120,20 @@ const Home = () => {
           </div>
 
           <div className="panel-body">
-            <FileUpload
-              onResult={handleResult}
-              onError={handleError}
-              onLoading={handleLoading}
-            />
+            {!showUpload ? (
+              <DomainSelect
+                selectedDomain={selectedDomain}
+                onSelect={setSelectedDomain}
+                onContinue={() => setShowUpload(true)}
+              />
+            ) : (
+              <FileUpload
+                selectedDomain={selectedDomain}
+                onResult={handleResult}
+                onError={handleError}
+                onLoading={handleLoading}
+              />
+            )}
           </div>
 
           {status === STATUS.SUCCESS && fileName && (
@@ -119,10 +149,34 @@ const Home = () => {
               <span>{label}</span>
               {badge && <span className={`status-badge status-${badge}`}>{badge}</span>}
             </h2>
+            <div className="view-toggle" role="tablist" aria-label="Requirements view">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={outputView === OUTPUT_VIEW.LIST}
+                className={`view-toggle-btn${outputView === OUTPUT_VIEW.LIST ? " active" : ""}`}
+                onClick={() => setOutputView(OUTPUT_VIEW.LIST)}
+              >
+                List
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={outputView === OUTPUT_VIEW.TREE}
+                className={`view-toggle-btn${outputView === OUTPUT_VIEW.TREE ? " active" : ""}`}
+                onClick={() => setOutputView(OUTPUT_VIEW.TREE)}
+              >
+                Tree
+              </button>
+            </div>
           </div>
 
           <div className="panel-body">
-            <RequirementsOutput requirements={requirements} isLoading={status === STATUS.LOADING} />
+            <RequirementsOutput
+              requirements={requirements}
+              isLoading={status === STATUS.LOADING}
+              view={outputView}
+            />
           </div>
         </section>
 

@@ -4,6 +4,16 @@
   gap: 14px;
 }
 
+.file-upload__domain {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #475569;
+}
+
+.file-upload__domain strong {
+  color: #1e293b;
+}
+
 /* Drop zone */
 .drop-zone {
   border: 2px dashed #4a90d9;

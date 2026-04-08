@@ -19,7 +19,9 @@ def backend_dir() -> str:
     return os.path.dirname(os.path.abspath(__file__))
 
 
-def run_generation_from_path(input_path: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+def run_generation_from_path(
+    input_path: str, domain: Optional[str] = None
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """
     Run extract → preprocess → NLP → LLM → formatted output dict.
 
@@ -60,7 +62,9 @@ def run_generation_from_path(input_path: str) -> Tuple[Optional[Dict[str, Any]],
         nlp_analysis = extractor.analyze_text(combined_text)
 
         generator = RequirementsGenerator(llm_client)
-        requirements = generator.generate_all_requirements(nlp_analysis, combined_text)
+        requirements = generator.generate_all_requirements(
+            nlp_analysis, combined_text, domain=domain
+        )
         output = generator.format_requirements_output(requirements)
         return output, None
     except Exception as e:

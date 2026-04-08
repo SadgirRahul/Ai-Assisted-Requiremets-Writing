@@ -16,6 +16,43 @@ logger = logging.getLogger(__name__)
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MODEL = "qwen/qwen3-8b"
 
+# First line of user prompts when a domain is selected (keys match frontend domain ids).
+DOMAIN_CONTEXTS: Dict[str, str] = {
+    "healthcare": (
+        "Domain: Healthcare — prioritize patient safety, clinical workflows, HIPAA-aligned privacy, "
+        "interoperability (FHIR where relevant), audit trails, and regulated medical software norms."
+    ),
+    "finance": (
+        "Domain: Finance — prioritize regulatory compliance (e.g. AML/KYC), fraud prevention, "
+        "transaction integrity, settlement accuracy, and secure handling of sensitive financial data."
+    ),
+    "ecommerce": (
+        "Domain: E-commerce — prioritize catalog and inventory accuracy, cart/checkout flows, "
+        "payments and refunds, order fulfillment, and customer-facing trust signals."
+    ),
+    "education": (
+        "Domain: Education — prioritize learning outcomes, accessibility, academic integrity, "
+        "student data privacy (e.g. FERPA-style concerns), and LMS-style teaching/assessment flows."
+    ),
+    "technology": (
+        "Domain: Technology / SaaS — prioritize APIs, integrations, scalability, observability, "
+        "multi-tenant boundaries, and secure software delivery practices."
+    ),
+    "custom": (
+        "Domain: Custom — infer the most fitting industry terminology and categories from the "
+        "document; keep requirements precise and testable."
+    ),
+}
+
+
+def _domain_context_first_line(domain: Optional[str]) -> str:
+    """Return the DOMAIN_CONTEXTS line for this domain slug, or empty if unset."""
+    if not domain or not str(domain).strip():
+        return ""
+    key = str(domain).strip().lower()
+    return DOMAIN_CONTEXTS.get(key, DOMAIN_CONTEXTS["custom"])
+
+
 # Injected into user prompts so priorities are varied and meaningful (not all "High").
 PRIORITY_RULES_BLOCK = """
 PRIORITY RULES (each requirement MUST have exactly one of: "High", "Medium", "Low"):
@@ -178,10 +215,13 @@ class LLMClient:
         actions: List[str],
         keywords: List[str],
         context: str,
+        domain: Optional[str] = None,
     ) -> List[Dict]:
         """Generate functional requirements based on extracted information."""
-        prompt = f"""
-You are a requirements engineering expert. Generate ONLY FUNCTIONAL requirements based on the extracted information.
+        domain_first = _domain_context_first_line(domain)
+        prefix = f"{domain_first}\n\n" if domain_first else ""
+
+        prompt = f"""{prefix}You are a requirements engineering expert. Generate ONLY FUNCTIONAL requirements based on the extracted information.
 
 FUNCTIONAL REQUIREMENTS define WHAT the system must do - specific behaviors, features, and capabilities.
 
@@ -251,11 +291,17 @@ Return only a JSON object with this structure (priorities must vary realisticall
         return result.get("functional_requirements", [])
 
     def generate_non_functional_requirements(
-        self, keywords: List[str], context: str, entities: Dict
+        self,
+        keywords: List[str],
+        context: str,
+        entities: Dict,
+        domain: Optional[str] = None,
     ) -> List[Dict]:
         """Generate non-functional requirements (performance, security, usability, etc.)."""
-        prompt = f"""
-You are a requirements engineering expert. Generate ONLY NON-FUNCTIONAL requirements based on the extracted information.
+        domain_first = _domain_context_first_line(domain)
+        prefix = f"{domain_first}\n\n" if domain_first else ""
+
+        prompt = f"""{prefix}You are a requirements engineering expert. Generate ONLY NON-FUNCTIONAL requirements based on the extracted information.
 
 NON-FUNCTIONAL REQUIREMENTS define HOW the system performs - quality attributes and constraints.
 

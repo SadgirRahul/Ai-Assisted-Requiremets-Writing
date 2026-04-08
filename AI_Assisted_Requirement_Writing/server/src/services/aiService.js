@@ -25,16 +25,24 @@ const validateConfig = () => {
 
 /**
  * Builds the system prompt for requirements extraction.
+ * @param {string} text
+ * @param {{ domain?: string }} [options]
  */
-const buildPrompt = (text) => {
+const buildPrompt = (text, options = {}) => {
+  const { domain } = options;
   // Truncate text if too long to avoid token limits
   const truncated = text.length > MAX_TEXT_LENGTH ? text.slice(0, MAX_TEXT_LENGTH) + "\n...[truncated]" : text;
+
+  const domainContext =
+    domain && domain.length > 0
+      ? `\n\nIndustry / domain context (use appropriate terminology and categories): ${domain}`
+      : "";
 
   return {
     system: `You are an expert requirements engineer. Your task is to analyze documents and extract structured software requirements.
 Always return ONLY valid JSON matching the exact schema provided. Do not include any explanation or markdown.`,
 
-    user: `Analyze the following document and extract all software requirements.
+    user: `Analyze the following document and extract all software requirements.${domainContext}
 
 Return ONLY a valid JSON object with this exact structure:
 {
@@ -96,12 +104,13 @@ const parseAIResponse = (content) => {
 /**
  * Sends extracted document text to OpenRouter LLM and returns structured requirements.
  * @param {string} text - Extracted plain text from the uploaded document
+ * @param {{ domain?: string }} [options]
  * @returns {Promise<{functional_requirements: Array, non_functional_requirements: Array}>}
  */
-const generateRequirements = async (text) => {
+const generateRequirements = async (text, options = {}) => {
   validateConfig();
 
-  const { system, user } = buildPrompt(text);
+  const { system, user } = buildPrompt(text, options);
 
   console.log(`[aiService] Sending request to OpenRouter — model: ${OPENROUTER_MODEL}`);
   console.log(`[aiService] Text length: ${text.length} chars (max: ${MAX_TEXT_LENGTH})`);

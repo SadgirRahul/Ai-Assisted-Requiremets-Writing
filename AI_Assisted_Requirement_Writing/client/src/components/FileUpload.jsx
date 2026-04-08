@@ -1,8 +1,10 @@
 import React, { useRef, useState } from "react";
 import axios from "axios";
+import { DOMAIN_OPTIONS } from "./DomainSelect";
 import "./FileUpload.css";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+// Default `/api` uses Vite proxy in dev (same origin → no CORS). Override VITE_API_URL for production.
+const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
 const ACCEPTED_TYPES = (import.meta.env.VITE_ACCEPTED_FILE_TYPES || ".pdf,.doc,.docx").split(",");
 
 /**
@@ -11,8 +13,10 @@ const ACCEPTED_TYPES = (import.meta.env.VITE_ACCEPTED_FILE_TYPES || ".pdf,.doc,.
  *   onResult(result)  — called with the API response on success
  *   onError(message)  — called with an error string on failure
  *   onLoading(name)   — called when generation starts (receives filename)
+ *   selectedDomain    — optional domain id from DomainSelect
  */
-const FileUpload = ({ onResult, onError, onLoading }) => {
+const FileUpload = ({ onResult, onError, onLoading, selectedDomain }) => {
+  const domainLabel = DOMAIN_OPTIONS.find((d) => d.id === selectedDomain)?.name;
   const inputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
@@ -61,9 +65,10 @@ const FileUpload = ({ onResult, onError, onLoading }) => {
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
+      formData.append("domain", selectedDomain ?? "");
 
       setStatus("Extracting text…");
-      const response = await axios.post(`${API_BASE_URL}/generate`, formData, {
+      const response = await axios.post(`${API_BASE_URL}/generate-requirements`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: (progressEvent) => {
           if (progressEvent.total) {
@@ -91,6 +96,11 @@ const FileUpload = ({ onResult, onError, onLoading }) => {
 
   return (
     <div className="file-upload-wrapper">
+      {domainLabel ? (
+        <p className="file-upload__domain">
+          Domain: <strong>{domainLabel}</strong>
+        </p>
+      ) : null}
       {/* Drop zone */}
       <div
         className={`drop-zone ${
