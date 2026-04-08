@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import DomainSelect, { DOMAIN_OPTIONS } from "../components/DomainSelect";
 import FileUpload from "../components/FileUpload";
 import RequirementsOutput from "../components/RequirementsOutput";
@@ -9,6 +10,7 @@ const STATUS = { IDLE: "idle", LOADING: "loading", SUCCESS: "success" };
 const OUTPUT_VIEW = { LIST: "list", TREE: "tree" };
 
 const Home = () => {
+  const navigate = useNavigate();
   const [selectedDomain, setSelectedDomain] = useState(null);
   const [showUpload, setShowUpload] = useState(false);
   const [outputView, setOutputView] = useState(OUTPUT_VIEW.LIST);
@@ -164,7 +166,16 @@ const Home = () => {
                 role="tab"
                 aria-selected={outputView === OUTPUT_VIEW.TREE}
                 className={`view-toggle-btn${outputView === OUTPUT_VIEW.TREE ? " active" : ""}`}
-                onClick={() => setOutputView(OUTPUT_VIEW.TREE)}
+                onClick={() => {
+                  if (!requirements || status !== STATUS.SUCCESS) return;
+                  navigate("/requirements/tree", {
+                    state: {
+                      requirements,
+                      selectedDomain,
+                      fileName,
+                    },
+                  });
+                }}
               >
                 Tree
               </button>

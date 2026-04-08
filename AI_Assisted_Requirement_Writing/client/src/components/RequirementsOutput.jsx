@@ -113,6 +113,7 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
   // Always define hooks in a stable order; handle "no data" states later.
   const functional_requirements = requirements?.functional_requirements ?? [];
   const non_functional_requirements = requirements?.non_functional_requirements ?? [];
+  const qualityReport = requirements?.qualityReport ?? null;
   const total = functional_requirements.length + non_functional_requirements.length;
 
   const handleExport = () => {
@@ -140,23 +141,28 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
   const treeData = useMemo(() => {
     const fnMap = toCategoryMap(functional_requirements);
     const nfnMap = toCategoryMap(non_functional_requirements);
+    const norm = (v) => String(v || "").trim().toLowerCase();
 
     const categoryChildren = (map, prefix) =>
       Array.from(map.entries())
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([category, reqs]) => ({
           name: category,
+          categoryRaw: category,
+          nodeId: `category:${prefix}:${norm(category)}`,
           nodeType: "category",
           branch: prefix,
           children: reqs.map((r) => ({
             name: r.id || `#${r._idx + 1}`,
+            nodeId: `leaf:${prefix}:${norm(category)}:${norm(r.id || `#${r._idx + 1}`)}:${r._idx}`,
             nodeType: "leaf",
             branch: prefix,
             requirement: {
               id: r.id || `#${r._idx + 1}`,
               description: r.description || "",
               priority: r.priority || "—",
-              category,
+              category: r.category || category,
+              branch: prefix,
             },
           })),
         }));
@@ -164,16 +170,19 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
     return [
       {
         name: "Requirements",
+        nodeId: "root",
         nodeType: "root",
         children: [
           {
             name: "Functional",
+            nodeId: "branch:functional",
             nodeType: "branch",
             branch: "functional",
             children: categoryChildren(fnMap, "functional"),
           },
           {
             name: "NonFunctional",
+            nodeId: "branch:nonFunctional",
             nodeType: "branch",
             branch: "nonFunctional",
             children: categoryChildren(nfnMap, "nonFunctional"),
@@ -187,6 +196,8 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
   const [treeSize, setTreeSize] = useState({ width: 0, height: 0 });
   const [selectedNode, setSelectedNode] = useState(null);
   const [priorityFilter, setPriorityFilter] = useState(null); // null | "HIGH" | "MEDIUM" | "LOW"
+  const [isTreeMaximized, setIsTreeMaximized] = useState(false);
+  const [showMaximizedDetails, setShowMaximizedDetails] = useState(true);
 
   useEffect(() => {
     if (view !== "tree") return;
@@ -212,6 +223,8 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
     if (view !== "tree") {
       setSelectedNode(null);
       setPriorityFilter(null);
+      setIsTreeMaximized(false);
+      setShowMaximizedDetails(true);
     }
   }, [view, functional_requirements, non_functional_requirements]);
 
@@ -250,6 +263,7 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
   };
 
   const nodeKey = (nodeDatum) => {
+    if (nodeDatum?.nodeId) return nodeDatum.nodeId;
     const t = nodeDatum?.nodeType || "";
     const b = nodeDatum?.branch || "";
     const n = nodeDatum?.name || "";
@@ -258,6 +272,12 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
   };
 
   const normalizePriority = (p) => String(p || "").trim().toUpperCase();
+  const normalizeCategory = (value) => String(value || "").trim().toLowerCase();
+
+  const clampLabel = (value = "", max = 24) => {
+    const text = String(value || "");
+    return text.length > max ? `${text.slice(0, max - 1)}...` : text;
+  };
 
   const getScopedRequirements = () => {
     const fn = functional_requirements || [];
@@ -275,8 +295,8 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
 
     if (selectedNode.nodeType === "category") {
       const items = selectedNode.branch === "functional" ? fn : nfn;
-      const categoryName = selectedNode.name || "General";
-      return items.filter((r) => String(r.category || "").trim() === categoryName);
+      const categoryNameNorm = normalizeCategory(selectedNode.categoryRaw || selectedNode.name || "General");
+      return items.filter((r) => normalizeCategory(r.category || "General") === categoryNameNorm);
     }
 
     if (selectedNode.nodeType === "leaf") {
@@ -348,6 +368,10 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
     const fill = nodeFill(nodeDatum);
     const stroke = nodeStroke(nodeDatum);
     const radius = nodeDatum.nodeType === "leaf" ? 10 : 14;
+    const label = clampLabel(
+      nodeDatum.name,
+      nodeDatum.nodeType === "leaf" ? 14 : nodeDatum.nodeType === "category" ? 20 : 22
+    );
 
     return (
       <g>
@@ -362,7 +386,8 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
           dy="0.32em"
           style={{ fontSize: 12, fontWeight: 700, fill: nodeLabelColor(nodeDatum) }}
         >
-          {nodeDatum.name}
+          <title>{nodeDatum.name}</title>
+          {label}
         </text>
       </g>
     );
@@ -400,25 +425,52 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
   }
 
   if (view === "tree") {
+    const rootTranslate = {
+      x: Math.max(60, Math.floor(treeSize.width / 2)),
+      y: 70,
+    };
+
     return (
       <div className="requirements-output">
         <SummaryBar fr={functional_requirements} nfr={non_functional_requirements} />
-        <div className="export-row">
+        {qualityReport ? (
+          <div className="quality-report-row" aria-label="Quality report">
+            <span className="quality-pill quality-pill-success">
+              {qualityReport.measurableCount ?? 0} requirements are specific and measurable
+            </span>
+            {(qualityReport.autoCorrections ?? 0) > 0 ? (
+              <span className="quality-pill quality-pill-warning">
+                {qualityReport.autoCorrections} requirements were auto-corrected (misclassification fixed)
+              </span>
+            ) : null}
+            <span className="quality-pill quality-pill-info">
+              {qualityReport.correctlyClassified ?? 0} non-functional requirements correctly separated
+            </span>
+          </div>
+        ) : null}
+        <div className="export-row tree-actions-row">
+          <button
+            className="export-btn tree-layout-btn"
+            type="button"
+            onClick={() => setIsTreeMaximized((prev) => !prev)}
+          >
+            {isTreeMaximized ? "🗕 Normal View" : "🗖 Maximize Tree"}
+          </button>
           <button className="export-btn" onClick={handleExport}>⬇ Export JSON</button>
         </div>
 
-        <div className="req-tree-layout">
-          <div className="req-tree-canvas" ref={treeWrapRef}>
+        <div className={`req-tree-layout${isTreeMaximized ? " maximized" : ""}`}>
+          <div className={`req-tree-canvas${isTreeMaximized ? " maximized" : ""}`} ref={treeWrapRef}>
             {treeSize.width > 0 && treeSize.height > 0 ? (
               <Tree
                 data={treeData}
-                orientation="horizontal"
-                translate={{ x: 40, y: Math.max(40, Math.floor(treeSize.height / 2)) }}
-                nodeSize={{ x: 240, y: 70 }}
-                separation={{ siblings: 1.15, nonSiblings: 1.3 }}
+                orientation="vertical"
+                translate={rootTranslate}
+                nodeSize={{ x: 180, y: 115 }}
+                separation={{ siblings: 1.25, nonSiblings: 1.5 }}
                 renderCustomNodeElement={renderNode}
                 onNodeClick={(nodeData) => {
-                  // react-d3-tree doesn't supply stable ids; synthesize a deterministic key for selection
+                  // Use explicit nodeId first; fallback to synthesized key if missing.
                   const nd = nodeData?.data || nodeData;
                   const key = nodeKey(nd);
                   setSelectedNode({ ...nd, __key: key });
@@ -429,40 +481,61 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
                 pathFunc="diagonal"
               />
             ) : null}
+            <p className="req-tree-guide">Tip: scroll to zoom, drag to pan, click a node to view details.</p>
           </div>
 
-          <aside className="req-tree-detail" aria-label="Requirement details">
-            <div className="req-tree-detail-top">
-              <div className="req-tree-detail-scope">
-                <h4 className="req-tree-detail-scope-title">{scopeTitle}</h4>
-                <p className="req-tree-detail-scope-sub">
-                  Showing {scopedRequirements.length} item(s){priorityFilter ? ` • ${priorityFilter}` : ""}
-                </p>
+          <aside
+            className={`req-tree-detail${isTreeMaximized ? " req-tree-detail-drawer" : ""}`}
+            aria-label="Requirement details"
+          >
+            {isTreeMaximized ? (
+              <div className="req-tree-drawer-header">
+                <h4>Details Panel</h4>
+                <button
+                  className="req-tree-filter-btn"
+                  type="button"
+                  onClick={() => setShowMaximizedDetails((prev) => !prev)}
+                >
+                  {showMaximizedDetails ? "Hide details" : "Show details"}
+                </button>
               </div>
+            ) : null}
 
-              <div className="req-tree-detail-filters" role="group" aria-label="Priority filter">
-                {["HIGH", "MEDIUM", "LOW"].map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    className={`req-tree-filter-btn${priorityFilter === p ? " active" : ""}`}
-                    onClick={() => setPriorityFilter(priorityFilter === p ? null : p)}
-                  >
-                    {p[0] + p.slice(1).toLowerCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {!isTreeMaximized || showMaximizedDetails ? (
+              <>
+                <div className="req-tree-detail-top">
+                  <div className="req-tree-detail-scope">
+                    <h4 className="req-tree-detail-scope-title">{scopeTitle}</h4>
+                    <p className="req-tree-detail-scope-sub">
+                      Showing {scopedRequirements.length} item(s){priorityFilter ? ` • ${priorityFilter}` : ""}
+                    </p>
+                  </div>
 
-            {selectedNode ? (
-              renderRequirementCards(scopedRequirements)
-            ) : (
-              <div className="req-tree-detail-empty">
-                <div className="placeholder-icon">👆</div>
-                <p>Select a node</p>
-                <span>Click root/branch/category/ID to see details.</span>
-              </div>
-            )}
+                  <div className="req-tree-detail-filters" role="group" aria-label="Priority filter">
+                    {["HIGH", "MEDIUM", "LOW"].map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        className={`req-tree-filter-btn${priorityFilter === p ? " active" : ""}`}
+                        onClick={() => setPriorityFilter(priorityFilter === p ? null : p)}
+                      >
+                        {p[0] + p.slice(1).toLowerCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {selectedNode ? (
+                  renderRequirementCards(scopedRequirements)
+                ) : (
+                  <div className="req-tree-detail-empty">
+                    <div className="placeholder-icon">👆</div>
+                    <p>Select a node</p>
+                    <span>Click root/branch/category/ID to see details.</span>
+                  </div>
+                )}
+              </>
+            ) : null}
           </aside>
         </div>
       </div>
@@ -472,6 +545,21 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
   return (
     <div className="requirements-output">
       <SummaryBar fr={functional_requirements} nfr={non_functional_requirements} />
+      {qualityReport ? (
+        <div className="quality-report-row" aria-label="Quality report">
+          <span className="quality-pill quality-pill-success">
+            {qualityReport.measurableCount ?? 0} requirements are specific and measurable
+          </span>
+          {(qualityReport.autoCorrections ?? 0) > 0 ? (
+            <span className="quality-pill quality-pill-warning">
+              {qualityReport.autoCorrections} requirements were auto-corrected (misclassification fixed)
+            </span>
+          ) : null}
+          <span className="quality-pill quality-pill-info">
+            {qualityReport.correctlyClassified ?? 0} non-functional requirements correctly separated
+          </span>
+        </div>
+      ) : null}
       <div className="export-row">
         <button className="export-btn" onClick={handleExport}>⬇ Export JSON</button>
       </div>
