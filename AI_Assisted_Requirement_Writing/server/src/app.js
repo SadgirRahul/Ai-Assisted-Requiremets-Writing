@@ -1,5 +1,6 @@
 const dotenv = require("dotenv");
-dotenv.config();
+// Ensure local .env values override machine/user env vars in dev.
+dotenv.config({ override: true });
 
 const express = require("express");
 const cors = require("cors");

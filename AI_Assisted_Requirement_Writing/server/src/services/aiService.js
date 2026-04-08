@@ -1,24 +1,68 @@
 const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
+const dotenv = require("dotenv");
 
-// All configuration from environment variables — no hardcoded values
-const OPENROUTER_API_URL =
-  process.env.OPENROUTER_API_URL || "https://openrouter.ai/api/v1/chat/completions";
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL;
-const OPENROUTER_SITE_URL = process.env.OPENROUTER_SITE_URL || "";
-const OPENROUTER_SITE_NAME = process.env.OPENROUTER_SITE_NAME || "AI Requirements Generator";
-const REQUEST_TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT_MS || "60000");
-const MAX_TEXT_LENGTH = parseInt(process.env.AI_MAX_TEXT_LENGTH || "12000");
-const TEMPERATURE = parseFloat(process.env.AI_TEMPERATURE || "0.2");
+const stripWrappingQuotes = (value = "") =>
+  value.replace(/^"(.*)"$/s, "$1").replace(/^'(.*)'$/s, "$1");
+
+const sanitizeToken = (value = "") => String(value).replace(/[^A-Za-z0-9._-]/g, "");
+
+const maskKey = (key = "") => {
+  if (!key) return "<empty>";
+  if (key.length <= 12) return `${key.slice(0, 2)}***${key.slice(-2)} (len=${key.length})`;
+  return `${key.slice(0, 8)}...${key.slice(-6)} (len=${key.length})`;
+};
+
+const getConfig = () => {
+  // Read server/.env directly to avoid stale/overridden machine-level env vars.
+  const envPath = path.resolve(__dirname, "../../.env");
+  let fileEnv = {};
+  try {
+    const raw = fs.readFileSync(envPath, "utf8");
+    fileEnv = dotenv.parse(raw);
+  } catch {
+    fileEnv = {};
+  }
+
+  const pick = (key, fallback = "") =>
+    fileEnv[key] !== undefined ? fileEnv[key] : (process.env[key] ?? fallback);
+
+  const openrouterApiUrl =
+    pick("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions").trim();
+  const openrouterApiKey = sanitizeToken(
+    stripWrappingQuotes(String(pick("OPENROUTER_API_KEY", "")).trim())
+  );
+  const openrouterModel = String(pick("OPENROUTER_MODEL", "")).trim();
+  const openrouterSiteUrl = String(pick("OPENROUTER_SITE_URL", "")).trim();
+  const openrouterSiteName = String(
+    pick("OPENROUTER_SITE_NAME", "AI Requirements Generator")
+  ).trim();
+
+  const requestTimeoutMs = parseInt(String(pick("AI_REQUEST_TIMEOUT_MS", "60000")));
+  const maxTextLength = parseInt(String(pick("AI_MAX_TEXT_LENGTH", "12000")));
+  const temperature = parseFloat(String(pick("AI_TEMPERATURE", "0.2")));
+
+  return {
+    openrouterApiUrl,
+    openrouterApiKey,
+    openrouterModel,
+    openrouterSiteUrl,
+    openrouterSiteName,
+    requestTimeoutMs,
+    maxTextLength,
+    temperature,
+  };
+};
 
 /**
  * Validates that all required environment variables are set.
  */
-const validateConfig = () => {
-  if (!OPENROUTER_API_KEY) {
+const validateConfig = (cfg) => {
+  if (!cfg.openrouterApiKey) {
     throw new Error("OPENROUTER_API_KEY is not set in environment variables");
   }
-  if (!OPENROUTER_MODEL) {
+  if (!cfg.openrouterModel) {
     throw new Error("OPENROUTER_MODEL is not set in environment variables");
   }
 };
@@ -30,8 +74,10 @@ const validateConfig = () => {
  */
 const buildPrompt = (text, options = {}) => {
   const { domain } = options;
+  const cfg = getConfig();
   // Truncate text if too long to avoid token limits
-  const truncated = text.length > MAX_TEXT_LENGTH ? text.slice(0, MAX_TEXT_LENGTH) + "\n...[truncated]" : text;
+  const truncated =
+    text.length > cfg.maxTextLength ? text.slice(0, cfg.maxTextLength) + "\n...[truncated]" : text;
 
   const domainContext =
     domain && domain.length > 0
@@ -108,33 +154,35 @@ const parseAIResponse = (content) => {
  * @returns {Promise<{functional_requirements: Array, non_functional_requirements: Array}>}
  */
 const generateRequirements = async (text, options = {}) => {
-  validateConfig();
+  const cfg = getConfig();
+  validateConfig(cfg);
 
   const { system, user } = buildPrompt(text, options);
 
-  console.log(`[aiService] Sending request to OpenRouter — model: ${OPENROUTER_MODEL}`);
-  console.log(`[aiService] Text length: ${text.length} chars (max: ${MAX_TEXT_LENGTH})`);
+  console.log(`[aiService] Sending request to OpenRouter — model: ${cfg.openrouterModel}`);
+  console.log(`[aiService] Text length: ${text.length} chars (max: ${cfg.maxTextLength})`);
+  console.log(`[aiService] Key fingerprint: ${maskKey(cfg.openrouterApiKey)}`);
 
   let response;
   try {
     response = await axios.post(
-      OPENROUTER_API_URL,
+      cfg.openrouterApiUrl,
       {
-        model: OPENROUTER_MODEL,
+        model: cfg.openrouterModel,
         messages: [
           { role: "system", content: system },
           { role: "user", content: user },
         ],
-        temperature: TEMPERATURE,
+        temperature: cfg.temperature,
         response_format: { type: "json_object" },
       },
       {
-        timeout: REQUEST_TIMEOUT_MS,
+        timeout: cfg.requestTimeoutMs,
         headers: {
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          Authorization: `Bearer ${cfg.openrouterApiKey}`,
           "Content-Type": "application/json",
-          ...(OPENROUTER_SITE_URL && { "HTTP-Referer": OPENROUTER_SITE_URL }),
-          ...(OPENROUTER_SITE_NAME && { "X-Title": OPENROUTER_SITE_NAME }),
+          ...(cfg.openrouterSiteUrl && { "HTTP-Referer": cfg.openrouterSiteUrl }),
+          ...(cfg.openrouterSiteName && { "X-Title": cfg.openrouterSiteName }),
         },
       }
     );
@@ -145,7 +193,7 @@ const generateRequirements = async (text, options = {}) => {
       throw new Error(`OpenRouter API error (${status}): ${detail}`);
     }
     if (err.code === "ECONNABORTED") {
-      throw new Error(`OpenRouter request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`);
+      throw new Error(`OpenRouter request timed out after ${cfg.requestTimeoutMs / 1000}s`);
     }
     throw new Error(`Failed to connect to OpenRouter: ${err.message}`);
   }
