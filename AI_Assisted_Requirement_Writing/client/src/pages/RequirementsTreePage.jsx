@@ -235,16 +235,30 @@ const RequirementsTreePage = () => {
           : COLORS.nonFunctional;
 
     const stroke = isSelected ? "#111827" : baseStroke;
-    const textColor = isRoot || isBranch
-      ? "#ffffff"
-      : isCategory
+    const textColor = isRoot
+      ? "#F4F1FF"
+      : isBranch
         ? b === "functional"
-          ? COLORS.functional
-          : COLORS.nonFunctional
-        : COLORS.leafText;
-    const fontSize = isRoot || isBranch ? 14 : 13;
-    const fontWeight = isRoot || isBranch ? 500 : 400;
-    const lines = isCategory ? categoryLines : [String(nodeDatum?.name || "")];
+          ? "#EAF4FF"
+          : "#E9FBF4"
+        : isCategory
+          ? b === "functional"
+            ? "#0A3F73"
+            : "#07483B"
+          : "#3F3F3A";
+    const fontSize = isRoot ? 14 : isBranch ? 13 : isCategory ? 13 : 12;
+    const fontWeight = isRoot || isBranch ? 600 : 500;
+
+    // Optional safety: truncate long single-word category labels to avoid overflow.
+    const safeLines = isCategory
+      ? categoryLines.map((line) => {
+          if (line.includes(" ") || line.length <= 16) return line;
+          return `${line.slice(0, 15)}...`;
+        })
+      : [String(nodeDatum?.name || "")];
+
+    const effectiveFontSize = isTwoLineCategory ? 12 : fontSize;
+    const letterSpacing = isRoot || isBranch ? "0.025em" : "0.02em";
 
     return (
       <g>
@@ -263,21 +277,23 @@ const RequirementsTreePage = () => {
           textAnchor="middle"
           dominantBaseline="central"
           style={{
-            fontSize,
+            fontSize: effectiveFontSize,
             fontWeight,
             fill: textColor,
             pointerEvents: "none",
             fontFamily: "\"Inter\", \"Segoe UI\", sans-serif",
+            letterSpacing,
+            wordSpacing: "0.03em",
           }}
         >
           <title>{nodeDatum.name}</title>
           {isTwoLineCategory ? (
             <>
-              <tspan x="0" dy="-0.3em">{lines[0]}</tspan>
-              <tspan x="0" dy="1.2em">{lines[1]}</tspan>
+              <tspan x="0" dy="-0.38em">{safeLines[0]}</tspan>
+              <tspan x="0" dy="1.3em">{safeLines[1]}</tspan>
             </>
           ) : (
-            <tspan x="0" dy="0.1em">{lines[0]}</tspan>
+            <tspan x="0" dy="0.1em">{safeLines[0]}</tspan>
           )}
         </text>
       </g>

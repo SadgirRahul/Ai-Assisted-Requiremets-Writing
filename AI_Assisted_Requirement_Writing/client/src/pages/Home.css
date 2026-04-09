@@ -6,57 +6,6 @@
   flex-direction: column;
 }
 
-/* ─── Header bar ────────────────────────────────────────────── */
-.home-header {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  padding: 28px 32px 24px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.18);
-}
-
-.home-header-inner {
-  max-width: 1400px;
-  margin: 0 auto;
-}
-
-.home-title-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 6px;
-}
-
-.home-title {
-  margin: 0;
-  font-size: 1.6rem;
-  font-weight: 800;
-  color: #ffffff;
-  letter-spacing: -0.02em;
-}
-
-.home-domain-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 5px 14px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #e0e7ff;
-  background: rgba(37, 99, 235, 0.35);
-  border: 1px solid rgba(96, 165, 250, 0.55);
-  border-radius: 999px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
-}
-
-.home-subtitle {
-  margin: 0;
-  font-size: 0.9rem;
-  color: #94a3b8;
-  max-width: 580px;
-  line-height: 1.5;
-}
-
 /* ─── Error banner ──────────────────────────────────────────── */
 .error-banner {
   display: flex;

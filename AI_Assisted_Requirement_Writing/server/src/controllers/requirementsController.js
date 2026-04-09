@@ -1,5 +1,5 @@
 const { parseFile } = require("../services/fileParser");
-const { generateRequirements } = require("../services/aiService");
+const { generateRequirements, detectDomain } = require("../services/aiService");
 const { generateRequirementsAnthropic } = require("../services/anthropicService");
 
 const isUpstreamLlmError = (message = "") => {
@@ -160,6 +160,9 @@ const generateRequirementsMain = async (req, res) => {
 
     const domain =
       typeof req.body.domain === "string" ? req.body.domain.trim() : "";
+    const forceDomain =
+      String(req.body.forceDomain || "").toLowerCase() === "true" ||
+      req.body.forceDomain === true;
 
     // Step 1: extraction service (same logic as /api/extract-text)
     const text = await parseFile(req.file);
@@ -167,14 +170,50 @@ const generateRequirementsMain = async (req, res) => {
       return res.status(400).json({ error: "No text could be extracted from the file" });
     }
 
+    const normalizeDomain = (v = "") =>
+      String(v || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+
+    let mismatchInfo = null;
+    if (!forceDomain && domain && domain.toLowerCase() !== "custom") {
+      const detected = await detectDomain(text);
+      const selectedNorm = normalizeDomain(domain);
+      const detectedNorm = normalizeDomain(detected.detectedDomain);
+      const isMismatch = selectedNorm && detectedNorm && selectedNorm !== detectedNorm;
+
+      if (isMismatch && detected.confidence === "high") {
+        return res.status(200).json({
+          mismatch: true,
+          selectedDomain: domain,
+          detectedDomain: detected.detectedDomain,
+          confidence: detected.confidence,
+          reason: detected.reason,
+        });
+      }
+
+      if (isMismatch && (detected.confidence === "medium" || detected.confidence === "low")) {
+        mismatchInfo = {
+          hasMismatch: true,
+          selectedDomain: domain,
+          detectedDomain: detected.detectedDomain,
+          confidence: detected.confidence,
+        };
+      }
+    }
+
     // Step 2: LLM service (Anthropic)
     // LLM service: OpenRouter (matches the existing UI expectations)
     const requirements = await generateRequirements(text, { domain });
+    const finalRequirements = mismatchInfo
+      ? { ...requirements, domainWarning: mismatchInfo }
+      : requirements;
 
     // Step 3: return final requirements JSON
     return res.json({
       domain: domain || null,
-      requirements,
+      requirements: finalRequirements,
+      mismatch: mismatchInfo?.hasMismatch || false,
     });
   } catch (error) {
     console.error("[generateRequirementsMain] Error:", error.message);

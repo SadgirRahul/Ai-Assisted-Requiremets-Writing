@@ -397,4 +397,72 @@ const generateRequirements = async (text, options = {}) => {
   return requirements;
 };
 
-module.exports = { generateRequirements };
+/**
+ * Lightweight domain detection pre-check from extracted text.
+ * @param {string} text
+ * @returns {Promise<{detectedDomain:string,confidence:string,reason:string}>}
+ */
+const detectDomain = async (text = "") => {
+  const cfg = getConfig();
+  validateConfig(cfg);
+  const sample = String(text || "").slice(0, 500);
+
+  const prompt = `Analyze the following text and identify what software/business domain 
+it belongs to. Reply with ONLY a JSON object, no explanation:
+{
+  "detectedDomain": "Finance|Healthcare|Education|E-Commerce|Technology|Other",
+  "confidence": "high|medium|low",
+  "reason": "one sentence explanation"
+}
+
+Text: ${sample}`;
+
+  let response;
+  try {
+    response = await axios.post(
+      cfg.openrouterApiUrl,
+      {
+        model: cfg.openrouterModel,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0,
+        response_format: { type: "json_object" },
+      },
+      {
+        timeout: Math.min(cfg.requestTimeoutMs, 30000),
+        headers: {
+          Authorization: `Bearer ${cfg.openrouterApiKey}`,
+          "Content-Type": "application/json",
+          ...(cfg.openrouterSiteUrl && { "HTTP-Referer": cfg.openrouterSiteUrl }),
+          ...(cfg.openrouterSiteName && { "X-Title": cfg.openrouterSiteName }),
+        },
+      }
+    );
+  } catch (err) {
+    if (err.response) {
+      const status = err.response.status;
+      const detail = err.response.data?.error?.message || err.response.statusText;
+      throw new Error(`OpenRouter domain-check error (${status}): ${detail}`);
+    }
+    if (err.code === "ECONNABORTED") {
+      throw new Error("OpenRouter domain-check timed out");
+    }
+    throw new Error(`OpenRouter domain-check failed: ${err.message}`);
+  }
+
+  const content = response.data?.choices?.[0]?.message?.content || "";
+  let parsed;
+  try {
+    parsed = JSON.parse(String(content).replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
+  } catch {
+    parsed = {};
+  }
+
+  const confidence = String(parsed?.confidence || "low").toLowerCase();
+  return {
+    detectedDomain: String(parsed?.detectedDomain || "Other").trim() || "Other",
+    confidence: confidence === "high" || confidence === "medium" || confidence === "low" ? confidence : "low",
+    reason: String(parsed?.reason || "Unable to confidently detect domain from text.").trim(),
+  };
+};
+
+module.exports = { generateRequirements, detectDomain };

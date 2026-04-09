@@ -109,11 +109,13 @@ const RequirementsTable = ({ items, title, accentColor }) => {
   );
 };
 
-const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
+const RequirementsOutput = ({ requirements, isLoading, view = "list", showExportButton = true }) => {
   // Always define hooks in a stable order; handle "no data" states later.
-  const functional_requirements = requirements?.functional_requirements ?? [];
-  const non_functional_requirements = requirements?.non_functional_requirements ?? [];
-  const qualityReport = requirements?.qualityReport ?? null;
+  const functional_requirements =
+    requirements?.functional_requirements ?? requirements?.functional ?? [];
+  const non_functional_requirements =
+    requirements?.non_functional_requirements ?? requirements?.nonFunctional ?? [];
+  const domainWarning = requirements?.domainWarning ?? null;
   const total = functional_requirements.length + non_functional_requirements.length;
 
   const handleExport = () => {
@@ -198,6 +200,7 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
   const [priorityFilter, setPriorityFilter] = useState(null); // null | "HIGH" | "MEDIUM" | "LOW"
   const [isTreeMaximized, setIsTreeMaximized] = useState(false);
   const [showMaximizedDetails, setShowMaximizedDetails] = useState(true);
+  const [dismissedDomainWarning, setDismissedDomainWarning] = useState(false);
 
   useEffect(() => {
     if (view !== "tree") return;
@@ -227,6 +230,10 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
       setShowMaximizedDetails(true);
     }
   }, [view, functional_requirements, non_functional_requirements]);
+
+  useEffect(() => {
+    setDismissedDomainWarning(false);
+  }, [requirements]);
 
   const COLORS = {
     root: "#7b1fa2", // purple
@@ -432,22 +439,23 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
 
     return (
       <div className="requirements-output">
-        <SummaryBar fr={functional_requirements} nfr={non_functional_requirements} />
-        {qualityReport ? (
-          <div className="quality-report-row" aria-label="Quality report">
-            <span className="quality-pill quality-pill-success">
-              {qualityReport.measurableCount ?? 0} requirements are specific and measurable
+        {domainWarning?.hasMismatch && !dismissedDomainWarning ? (
+          <div className="domain-warning-banner" role="status" aria-live="polite">
+            <span>
+              ⚠ Results generated with possible domain mismatch (selected: {domainWarning.selectedDomain},
+              detected: {domainWarning.detectedDomain}) — review requirements carefully
             </span>
-            {(qualityReport.autoCorrections ?? 0) > 0 ? (
-              <span className="quality-pill quality-pill-warning">
-                {qualityReport.autoCorrections} requirements were auto-corrected (misclassification fixed)
-              </span>
-            ) : null}
-            <span className="quality-pill quality-pill-info">
-              {qualityReport.correctlyClassified ?? 0} non-functional requirements correctly separated
-            </span>
+            <button
+              type="button"
+              className="domain-warning-close"
+              onClick={() => setDismissedDomainWarning(true)}
+              aria-label="Dismiss mismatch warning"
+            >
+              ✕
+            </button>
           </div>
         ) : null}
+        <SummaryBar fr={functional_requirements} nfr={non_functional_requirements} />
         <div className="export-row tree-actions-row">
           <button
             className="export-btn tree-layout-btn"
@@ -456,7 +464,9 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
           >
             {isTreeMaximized ? "🗕 Normal View" : "🗖 Maximize Tree"}
           </button>
-          <button className="export-btn" onClick={handleExport}>⬇ Export JSON</button>
+          {showExportButton ? (
+            <button className="export-btn" onClick={handleExport}>⬇ Export JSON</button>
+          ) : null}
         </div>
 
         <div className={`req-tree-layout${isTreeMaximized ? " maximized" : ""}`}>
@@ -544,25 +554,28 @@ const RequirementsOutput = ({ requirements, isLoading, view = "list" }) => {
 
   return (
     <div className="requirements-output">
-      <SummaryBar fr={functional_requirements} nfr={non_functional_requirements} />
-      {qualityReport ? (
-        <div className="quality-report-row" aria-label="Quality report">
-          <span className="quality-pill quality-pill-success">
-            {qualityReport.measurableCount ?? 0} requirements are specific and measurable
+      {domainWarning?.hasMismatch && !dismissedDomainWarning ? (
+        <div className="domain-warning-banner" role="status" aria-live="polite">
+          <span>
+            ⚠ Results generated with possible domain mismatch (selected: {domainWarning.selectedDomain},
+            detected: {domainWarning.detectedDomain}) — review requirements carefully
           </span>
-          {(qualityReport.autoCorrections ?? 0) > 0 ? (
-            <span className="quality-pill quality-pill-warning">
-              {qualityReport.autoCorrections} requirements were auto-corrected (misclassification fixed)
-            </span>
-          ) : null}
-          <span className="quality-pill quality-pill-info">
-            {qualityReport.correctlyClassified ?? 0} non-functional requirements correctly separated
-          </span>
+          <button
+            type="button"
+            className="domain-warning-close"
+            onClick={() => setDismissedDomainWarning(true)}
+            aria-label="Dismiss mismatch warning"
+          >
+            ✕
+          </button>
         </div>
       ) : null}
-      <div className="export-row">
-        <button className="export-btn" onClick={handleExport}>⬇ Export JSON</button>
-      </div>
+      <SummaryBar fr={functional_requirements} nfr={non_functional_requirements} />
+      {showExportButton ? (
+        <div className="export-row">
+          <button className="export-btn" onClick={handleExport}>⬇ Export JSON</button>
+        </div>
+      ) : null}
       <RequirementsTable
         items={functional_requirements}
         title="Functional Requirements"

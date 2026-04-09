@@ -14,8 +14,17 @@ const ACCEPTED_TYPES = (import.meta.env.VITE_ACCEPTED_FILE_TYPES || ".pdf,.doc,.
  *   onError(message)  — called with an error string on failure
  *   onLoading(name)   — called when generation starts (receives filename)
  *   selectedDomain    — optional domain id from DomainSelect
+ *   onDomainChange(id) — optional: updates selected domain after mismatch detect
+ *   onBackToDomainSelect() — optional: return to domain selection step
  */
-const FileUpload = ({ onResult, onError, onLoading, selectedDomain }) => {
+const FileUpload = ({
+  onResult,
+  onError,
+  onLoading,
+  selectedDomain,
+  onDomainChange,
+  onBackToDomainSelect,
+}) => {
   const domainLabel = DOMAIN_OPTIONS.find((d) => d.id === selectedDomain)?.name;
   const inputRef = useRef(null);
   const [selectedFile, setSelectedFile] = useState(null);
@@ -23,6 +32,7 @@ const FileUpload = ({ onResult, onError, onLoading, selectedDomain }) => {
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [status, setStatus] = useState(""); // step label shown under spinner
+  const [domainMismatch, setDomainMismatch] = useState(null);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -49,7 +59,17 @@ const FileUpload = ({ onResult, onError, onLoading, selectedDomain }) => {
     if (onError) onError(null);
   };
 
-  const handleGenerate = async () => {
+  const domainIdFromDetected = (detectedDomain = "") => {
+    const normalized = String(detectedDomain || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (normalized.includes("health")) return "healthcare";
+    if (normalized.includes("finance")) return "finance";
+    if (normalized.includes("education")) return "education";
+    if (normalized.includes("ecommerce")) return "ecommerce";
+    if (normalized.includes("technology")) return "technology";
+    return "custom";
+  };
+
+  const submitGeneration = async ({ domainOverride, forceDomain = false } = {}) => {
     if (!selectedFile) {
       if (onError) onError("Please select a PDF or Word file first.");
       return;
@@ -65,7 +85,8 @@ const FileUpload = ({ onResult, onError, onLoading, selectedDomain }) => {
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
-      formData.append("domain", selectedDomain ?? "");
+      formData.append("domain", domainOverride ?? selectedDomain ?? "");
+      if (forceDomain) formData.append("forceDomain", "true");
 
       setStatus("Extracting text…");
       const response = await axios.post(`${API_BASE_URL}/generate-requirements`, formData, {
@@ -79,6 +100,13 @@ const FileUpload = ({ onResult, onError, onLoading, selectedDomain }) => {
         },
       });
 
+      if (response.data?.mismatch && response.data?.confidence === "high") {
+        setDomainMismatch(response.data);
+        setStatus("Domain mismatch detected");
+        return;
+      }
+
+      setDomainMismatch(null);
       setStatus("Done!");
       if (onResult) onResult(response.data);
     } catch (err) {
@@ -92,6 +120,10 @@ const FileUpload = ({ onResult, onError, onLoading, selectedDomain }) => {
       setUploadProgress(0);
       setStatus("");
     }
+  };
+
+  const handleGenerate = async () => {
+    await submitGeneration();
   };
 
   return (
@@ -170,6 +202,54 @@ const FileUpload = ({ onResult, onError, onLoading, selectedDomain }) => {
       >
         {loading ? "⏳ Processing…" : "⚡ Generate Requirements"}
       </button>
+
+      {domainMismatch ? (
+        <div className="domain-mismatch-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="domain-mismatch-modal">
+            <h3>Domain mismatch detected</h3>
+            <p>
+              Your document looks like <strong>{domainMismatch.detectedDomain}</strong> content but you
+              selected <strong> {domainLabel || domainMismatch.selectedDomain}</strong>. Generating with wrong domain
+              produces inaccurate requirements.
+            </p>
+            <div className="domain-mismatch-reason">{domainMismatch.reason}</div>
+            <div className="domain-mismatch-actions">
+              <button
+                type="button"
+                className="mismatch-btn primary"
+                onClick={async () => {
+                  const detectedId = domainIdFromDetected(domainMismatch.detectedDomain);
+                  if (onDomainChange) onDomainChange(detectedId);
+                  setDomainMismatch(null);
+                  await submitGeneration({ domainOverride: detectedId, forceDomain: false });
+                }}
+              >
+                Use {domainMismatch.detectedDomain} instead
+              </button>
+              <button
+                type="button"
+                className="mismatch-btn warning"
+                onClick={async () => {
+                  setDomainMismatch(null);
+                  await submitGeneration({ forceDomain: true });
+                }}
+              >
+                Continue with {domainLabel || domainMismatch.selectedDomain} anyway
+              </button>
+              <button
+                type="button"
+                className="mismatch-btn subtle"
+                onClick={() => {
+                  setDomainMismatch(null);
+                  if (onBackToDomainSelect) onBackToDomainSelect();
+                }}
+              >
+                Go back and reselect
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

@@ -12,10 +12,6 @@ function App() {
           path="/"
           element={
             <>
-              <header className="app-header">
-                <h1>AI Requirements Generator</h1>
-                <p>Upload a PDF or Word document to generate structured requirements</p>
-              </header>
               <main>
                 <Home />
               </main>

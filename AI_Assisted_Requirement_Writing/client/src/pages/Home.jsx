@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import DomainSelect, { DOMAIN_OPTIONS } from "../components/DomainSelect";
 import FileUpload from "../components/FileUpload";
 import RequirementsOutput from "../components/RequirementsOutput";
+import TopNavbar from "../components/TopNavbar";
 import "./Home.css";
 
 // Status values: 'idle' | 'loading' | 'success'
@@ -19,6 +20,7 @@ const Home = () => {
   const [error, setError]               = useState(null);
   const [status, setStatus]             = useState(STATUS.IDLE);
   const [fileName, setFileName]         = useState("");
+  const [hasExported, setHasExported]   = useState(false);
 
   // Called by FileUpload when the AI response arrives
   const handleResult = useCallback((result) => {
@@ -26,9 +28,11 @@ const Home = () => {
     if (result && result.requirements) {
       setRequirements(result.requirements);
       setStatus(STATUS.SUCCESS);
+      setHasExported(false);
     } else {
       setRequirements(null);
       setStatus(STATUS.IDLE);
+      setHasExported(false);
     }
   }, []);
 
@@ -37,6 +41,7 @@ const Home = () => {
     setError(null);
     setRequirements(null);
     setStatus(STATUS.LOADING);
+    setHasExported(false);
     if (name) setFileName(name);
   }, []);
 
@@ -45,6 +50,7 @@ const Home = () => {
     setError(message);
     setStatus(STATUS.IDLE);
     setRequirements(null);
+    setHasExported(false);
   }, []);
 
   // Dismiss error banner
@@ -59,6 +65,7 @@ const Home = () => {
     setError(null);
     setStatus(STATUS.IDLE);
     setFileName("");
+    setHasExported(false);
   };
 
   // Human-readable output panel header
@@ -73,29 +80,39 @@ const Home = () => {
   const { label, badge, icon } = outputHeading();
 
   const domainBadgeLabel = DOMAIN_OPTIONS.find((d) => d.id === selectedDomain)?.name;
+  const hasResults = status === STATUS.SUCCESS && !!requirements;
+
+  const handleExportFromNavbar = useCallback(() => {
+    if (!requirements) return;
+    const blob = new Blob([JSON.stringify(requirements, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "requirements.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    setHasExported(true);
+  }, [requirements]);
+
+  const currentStep = !showUpload
+    ? 1
+    : !hasResults
+      ? 2
+      : hasExported
+        ? 4
+        : 3;
 
   return (
     <div className="home-page">
-      {/* ── Page header ───────────────────────────── */}
-      <header className="home-header">
-        <div className="home-header-inner">
-          <div className="home-title-row">
-            <h1 className="home-title">AI Requirements Generator</h1>
-            {status === STATUS.SUCCESS && domainBadgeLabel ? (
-              <span
-                className="home-domain-badge"
-                title="Domain context used for this generation"
-              >
-                {domainBadgeLabel}
-              </span>
-            ) : null}
-          </div>
-          <p className="home-subtitle">
-            Upload a project document (PDF / DOCX) and let AI extract structured
-            functional &amp; non-functional requirements.
-          </p>
-        </div>
-      </header>
+      <TopNavbar
+        currentStep={currentStep}
+        selectedDomain={domainBadgeLabel || null}
+        hasResults={hasResults}
+        onExport={handleExportFromNavbar}
+        onReset={handleReset}
+      />
 
       {/* ── Error banner ──────────────────────────── */}
       {error && (
@@ -131,6 +148,8 @@ const Home = () => {
             ) : (
               <FileUpload
                 selectedDomain={selectedDomain}
+                onDomainChange={setSelectedDomain}
+                onBackToDomainSelect={() => setShowUpload(false)}
                 onResult={handleResult}
                 onError={handleError}
                 onLoading={handleLoading}
@@ -187,6 +206,7 @@ const Home = () => {
               requirements={requirements}
               isLoading={status === STATUS.LOADING}
               view={outputView}
+              showExportButton={false}
             />
           </div>
         </section>
