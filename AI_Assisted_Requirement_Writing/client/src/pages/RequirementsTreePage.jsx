@@ -61,6 +61,7 @@ const RequirementsTreePage = () => {
   const treeWrapRef = useRef(null);
   const [treeSize, setTreeSize] = useState({ width: 0, height: 0 });
   const [selectedNode, setSelectedNode] = useState(null);
+  const [selectedLeaf, setSelectedLeaf] = useState(null);
   const [priorityFilter, setPriorityFilter] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [zoom, setZoom] = useState(0.82);
@@ -241,6 +242,23 @@ const RequirementsTreePage = () => {
   const zoomIn = () => setZoom((z) => Math.min(2, +(z + 0.12).toFixed(2)));
   const zoomOut = () => setZoom((z) => Math.max(0.25, +(z - 0.12).toFixed(2)));
 
+  const handleTreeNodeClick = (nodeData) => {
+    const nd = nodeData?.data || nodeData;
+    const nodeType = nd?.nodeType || nodeData?.nodeType;
+    const leafPayload = nd?.reqData || nd?.requirement || nodeData?.reqData || nodeData?.requirement;
+
+    console.log("[Tree Click]", nd?.name || nodeData?.name);
+    const key = nodeKey(nd || nodeData);
+    setSelectedNode({ ...(nd || nodeData), __key: key });
+    setIsDrawerOpen(true);
+
+    if (nodeType === "leaf" && leafPayload) {
+      setSelectedLeaf((prev) => (prev?.id === leafPayload.id ? null : { ...leafPayload }));
+    } else {
+      setSelectedLeaf(null);
+    }
+  };
+
   const renderNode = ({ nodeDatum }) => {
     const key = nodeKey(nodeDatum);
     const isSelected = selectedNode?.__key === key;
@@ -306,7 +324,7 @@ const RequirementsTreePage = () => {
     const letterSpacing = isRoot || isBranch ? "0.025em" : "0.02em";
 
     return (
-      <g>
+      <g onClick={() => handleTreeNodeClick(nodeDatum)} style={{ cursor: "pointer" }}>
         <rect
           x={-width / 2}
           y={-height / 2}
@@ -378,6 +396,42 @@ const RequirementsTreePage = () => {
     );
   };
 
+  const renderLeafDetailCard = () => {
+    if (!selectedLeaf) return null;
+    const id = selectedLeaf.id || "—";
+    const description = selectedLeaf.description || "—";
+    const priority = selectedLeaf.priority || "Medium";
+    const category = selectedLeaf.category || "General";
+    const subcategory = selectedLeaf.subcategory || category;
+    const showSubcategory = String(subcategory).trim() !== String(category).trim();
+
+    return (
+      <div className={`tree-leaf-card-wrap ${selectedLeaf ? "open" : ""}`}>
+        <div className="tree-leaf-card">
+          <button
+            type="button"
+            className="tree-leaf-card-close"
+            aria-label="Close requirement details"
+            onClick={() => setSelectedLeaf(null)}
+          >
+            ✕
+          </button>
+          <div className="tree-leaf-card-header">
+            <span className="req-id">{id}</span>
+            <span className={`priority-badge priority-${normalizePriority(priority).toLowerCase()}`}>
+              {priority}
+            </span>
+          </div>
+          <p className="tree-leaf-card-desc">{description}</p>
+          <div className="tree-leaf-card-meta">
+            <span className="category-tag">{category}</span>
+            {showSubcategory ? <span className="category-tag">Sub: {subcategory}</span> : null}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (!requirements) {
     return (
       <div className="tree-page">
@@ -429,13 +483,6 @@ const RequirementsTreePage = () => {
             nodeSize={{ x: 220, y: 140 }}
             separation={{ siblings: 1.4, nonSiblings: 1.8 }}
             renderCustomNodeElement={renderNode}
-            onNodeClick={(nodeData) => {
-              const nd = nodeData?.data || nodeData;
-              console.log("[Tree Click]", nd?.name);
-              const key = nodeKey(nd);
-              setSelectedNode({ ...nd, __key: key });
-              setIsDrawerOpen(true);
-            }}
             zoomable
             collapsible
             enableLegacyTransitions
@@ -443,6 +490,7 @@ const RequirementsTreePage = () => {
           />
         ) : null}
       </div>
+      {renderLeafDetailCard()}
 
       <aside className={`tree-drawer ${isDrawerOpen ? "open" : ""}`} aria-label="Requirement details drawer">
         <div className="tree-drawer-header">
