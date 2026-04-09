@@ -83,63 +83,110 @@ const RequirementsTreePage = () => {
   }, []);
 
   const treeData = useMemo(() => {
-    const toCategoryMap = (items) => {
-      const map = new Map();
-      items.forEach((r, idx) => {
-        const category = (r.category || "General").trim() || "General";
-        if (!map.has(category)) map.set(category, []);
-        map.get(category).push({ ...r, _idx: idx });
-      });
-      return map;
+    const normalize = (v, fallback = "General") => {
+      const s = String(v ?? "").trim();
+      return s.length > 0 ? s : fallback;
     };
+    const norm = (v) => normalize(v).toLowerCase();
 
-    const fnMap = toCategoryMap(functional_requirements);
-    const nfnMap = toCategoryMap(non_functional_requirements);
-    const norm = (v) => String(v || "").trim().toLowerCase();
+    const makeLeaf = (req, idx, branch, category) => ({
+      name: normalize(req.id, `#${idx + 1}`),
+      nodeType: "leaf",
+      branch,
+      nodeId: `leaf:${branch}:${norm(category)}:${norm(req.id || `#${idx + 1}`)}:${idx}`,
+      reqData: {
+        id: normalize(req.id, `#${idx + 1}`),
+        description: normalize(req.description, ""),
+        priority: normalize(req.priority, "Medium"),
+        category: normalize(req.category, category),
+        subcategory: normalize(req.subcategory, normalize(req.category, category)),
+        branch,
+      },
+      requirement: {
+        id: normalize(req.id, `#${idx + 1}`),
+        description: normalize(req.description, ""),
+        priority: normalize(req.priority, "Medium"),
+        category: normalize(req.category, category),
+        subcategory: normalize(req.subcategory, normalize(req.category, category)),
+        branch,
+      },
+    });
 
-    const categoryChildren = (map, prefix) =>
-      Array.from(map.entries())
+    const buildBranch = (items, branch) => {
+      const categoryMap = new Map(); // category -> subcategory -> req[]
+
+      items.forEach((req, idx) => {
+        const category = normalize(req.category, "General");
+        const subcategory = normalize(req.subcategory, category);
+        if (!categoryMap.has(category)) categoryMap.set(category, new Map());
+        const subMap = categoryMap.get(category);
+        if (!subMap.has(subcategory)) subMap.set(subcategory, []);
+        subMap.get(subcategory).push({ req, idx });
+      });
+
+      return Array.from(categoryMap.entries())
         .sort(([a], [b]) => a.localeCompare(b))
-        .map(([category, reqs]) => ({
-          name: category,
-          categoryRaw: category,
-          nodeId: `category:${prefix}:${norm(category)}`,
-          nodeType: "category",
-          branch: prefix,
-          children: reqs.map((r) => ({
-            name: r.id || `#${r._idx + 1}`,
-            nodeId: `leaf:${prefix}:${norm(category)}:${norm(r.id || `#${r._idx + 1}`)}:${r._idx}`,
-            nodeType: "leaf",
-            branch: prefix,
-            requirement: {
-              id: r.id || `#${r._idx + 1}`,
-              description: r.description || "",
-              priority: r.priority || "—",
-              category: r.category || category,
-              branch: prefix,
-            },
-          })),
-        }));
+        .map(([category, subMap]) => {
+          const subEntries = Array.from(subMap.entries()).sort(([a], [b]) => a.localeCompare(b));
+          const shouldSkipAllSubcategoryLevel =
+            subEntries.length === 1 ||
+            subEntries.every(([sub]) => norm(sub) === norm(category));
+
+          let children = [];
+          if (shouldSkipAllSubcategoryLevel) {
+            children = subEntries.flatMap(([, list]) =>
+              list.map(({ req, idx }) => makeLeaf(req, idx, branch, category))
+            );
+          } else {
+            children = subEntries.flatMap(([subcategory, list]) => {
+              if (list.length === 1) {
+                const { req, idx } = list[0];
+                return [makeLeaf(req, idx, branch, category)];
+              }
+              return [
+                {
+                  name: subcategory,
+                  nodeType: "subcategory",
+                  branch,
+                  categoryRaw: category,
+                  subcategoryRaw: subcategory,
+                  nodeId: `subcategory:${branch}:${norm(category)}:${norm(subcategory)}`,
+                  children: list.map(({ req, idx }) => makeLeaf(req, idx, branch, category)),
+                },
+              ];
+            });
+          }
+
+          return {
+            name: category,
+            nodeType: "category",
+            branch,
+            categoryRaw: category,
+            nodeId: `category:${branch}:${norm(category)}`,
+            children,
+          };
+        });
+    };
 
     return [
       {
         name: "Requirements",
-        nodeId: "root",
         nodeType: "root",
+        nodeId: "root",
         children: [
           {
             name: "Functional",
-            nodeId: "branch:functional",
             nodeType: "branch",
             branch: "functional",
-            children: categoryChildren(fnMap, "functional"),
+            nodeId: "branch:functional",
+            children: buildBranch(functional_requirements, "functional"),
           },
           {
             name: "Non-Functional",
-            nodeId: "branch:nonFunctional",
             nodeType: "branch",
             branch: "nonFunctional",
-            children: categoryChildren(nfnMap, "nonFunctional"),
+            nodeId: "branch:nonFunctional",
+            children: buildBranch(non_functional_requirements, "nonFunctional"),
           },
         ],
       },
@@ -152,20 +199,18 @@ const RequirementsTreePage = () => {
     if (!selectedNode) return [];
 
     if (selectedNode.nodeType === "root") return [...fn, ...nfn];
-    if (selectedNode.nodeType === "branch") {
-      return selectedNode.branch === "functional" ? fn : nfn;
-    }
+    if (selectedNode.nodeType === "branch") return selectedNode.branch === "functional" ? fn : nfn;
     if (selectedNode.nodeType === "category") {
       const items = selectedNode.branch === "functional" ? fn : nfn;
-      const clickedCategory = String(selectedNode.name || "").trim();
-      return items.filter((r) => String(r.category || "").trim() === clickedCategory);
+      return items.filter((r) => String(r.category || "").trim() === String(selectedNode.name || "").trim());
     }
-    if (selectedNode.nodeType === "leaf") {
+    if (selectedNode.nodeType === "subcategory") {
       const items = selectedNode.branch === "functional" ? fn : nfn;
-      const clickedId = String(selectedNode.name || "").trim();
-      const found = items.find((r) => String(r.id || "").trim() === clickedId);
-      return found ? [found] : [];
+      return items.filter(
+        (r) => String(r.subcategory || r.category || "").trim() === String(selectedNode.name || "").trim()
+      );
     }
+    if (selectedNode.nodeType === "leaf") return selectedNode.reqData ? [selectedNode.reqData] : [];
     return [];
   };
 
@@ -209,7 +254,7 @@ const RequirementsTreePage = () => {
     const categoryLines = isCategory ? splitCategoryLabel(nodeDatum?.name || "") : [String(nodeDatum?.name || "")];
     const isTwoLineCategory = isCategory && categoryLines.length === 2;
 
-    const width = isRoot ? 180 : isBranch ? 170 : isCategory ? 160 : 100;
+    const width = Math.min(Math.max(80, String(nodeDatum?.name || "").length * 9 + 32), 200);
     const height = isRoot ? 48 : isBranch ? 44 : isCategory ? (isTwoLineCategory ? 52 : 40) : 34;
     const rx = isLeaf ? 8 : 10;
     const ry = isLeaf ? 8 : 10;
@@ -337,7 +382,11 @@ const RequirementsTreePage = () => {
     return (
       <div className="tree-page">
         <div className="tree-navbar">
-          <button type="button" className="tree-back-btn" onClick={() => navigate(-1)}>
+          <button
+            type="button"
+            className="tree-back-btn"
+            onClick={() => navigate("/", { state: { ...location.state, returnView: "tree" } })}
+          >
             ← Back to Results
           </button>
         </div>
@@ -352,7 +401,11 @@ const RequirementsTreePage = () => {
   return (
     <div className="tree-page">
       <div className="tree-navbar">
-        <button type="button" className="tree-back-btn" onClick={() => navigate(-1)}>
+        <button
+          type="button"
+          className="tree-back-btn"
+          onClick={() => navigate("/", { state: { ...location.state, returnView: "tree" } })}
+        >
           ← Back to Results
         </button>
         <div className="tree-navbar-meta">

@@ -122,6 +122,10 @@ CATEGORY RULES for Non-Functional:
   Data Validation, Maintainability, Reliability
 - Never use generic category names
 
+Derive category and subcategory names from the actual input 
+content — do not use fixed/hardcoded names. Two different documents 
+should produce different category structures.
+
 PRIORITY RULES:
 - HIGH = system cannot launch without this feature
 - MEDIUM = important but can be deferred to v1.1
@@ -141,7 +145,8 @@ Return ONLY valid JSON, no markdown, no explanation:
       "id": "FR-1", 
       "description": "...", 
       "priority": "HIGH|MEDIUM|LOW", 
-      "category": "..." 
+      "category": "...",
+      "subcategory": "..."
     }
   ],
   "nonFunctional": [
@@ -149,7 +154,8 @@ Return ONLY valid JSON, no markdown, no explanation:
       "id": "NFR-1", 
       "description": "...", 
       "priority": "HIGH|MEDIUM|LOW", 
-      "category": "..." 
+      "category": "...",
+      "subcategory": "..."
     }
   ]
 }`,
@@ -188,6 +194,10 @@ const parseAIResponse = (content) => {
     description: String(r.description || "").trim(),
     priority: normalizePriorityLabel(r.priority),
     category: String(r.category || "General").trim() || "General",
+    subcategory:
+      String(r.subcategory || r.category || "General").trim() ||
+      String(r.category || "General").trim() ||
+      "General",
   });
 
   // Accept both old and new JSON shapes from the model.

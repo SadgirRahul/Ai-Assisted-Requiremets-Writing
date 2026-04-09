@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useCallback, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import DomainSelect, { DOMAIN_OPTIONS } from "../components/DomainSelect";
 import FileUpload from "../components/FileUpload";
 import RequirementsOutput from "../components/RequirementsOutput";
@@ -11,6 +11,7 @@ const STATUS = { IDLE: "idle", LOADING: "loading", SUCCESS: "success" };
 const OUTPUT_VIEW = { LIST: "list", TREE: "tree" };
 
 const Home = () => {
+  const location = useLocation();
   const navigate = useNavigate();
   const [selectedDomain, setSelectedDomain] = useState(null);
   const [showUpload, setShowUpload] = useState(false);
@@ -21,6 +22,18 @@ const Home = () => {
   const [status, setStatus]             = useState(STATUS.IDLE);
   const [fileName, setFileName]         = useState("");
   const [hasExported, setHasExported]   = useState(false);
+
+  useEffect(() => {
+    const state = location.state;
+    if (!state || !state.requirements) return;
+
+    setRequirements(state.requirements);
+    setSelectedDomain(state.selectedDomain || null);
+    setFileName(state.fileName || "");
+    setShowUpload(true);
+    setStatus(STATUS.SUCCESS);
+    setOutputView(state.returnView === OUTPUT_VIEW.TREE ? OUTPUT_VIEW.TREE : OUTPUT_VIEW.LIST);
+  }, [location.state]);
 
   // Called by FileUpload when the AI response arrives
   const handleResult = useCallback((result) => {
