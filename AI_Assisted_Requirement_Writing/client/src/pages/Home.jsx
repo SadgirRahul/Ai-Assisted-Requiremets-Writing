@@ -8,7 +8,7 @@ import "./Home.css";
 
 // Status values: 'idle' | 'loading' | 'success'
 const STATUS = { IDLE: "idle", LOADING: "loading", SUCCESS: "success" };
-const OUTPUT_VIEW = { LIST: "list", TREE: "tree" };
+const OUTPUT_VIEW = { LIST: "list", ANALYSIS: "analysis", TREE: "tree" };
 
 const Home = () => {
   const location = useLocation();
@@ -94,6 +94,7 @@ const Home = () => {
 
   const domainBadgeLabel = DOMAIN_OPTIONS.find((d) => d.id === selectedDomain)?.name;
   const hasResults = status === STATUS.SUCCESS && !!requirements;
+  const duplicateGroupCount = requirements?.duplicates?.groups?.length || 0;
 
   const handleExportFromNavbar = useCallback(() => {
     if (!requirements) return;
@@ -177,11 +178,14 @@ const Home = () => {
 
         {/* Output Panel */}
         <section className="panel output-panel" aria-label="Output section">
-          <div className="panel-header">
+          <div className="panel-header output-panel-header">
             <h2>
               <span>{icon}</span>
               <span>{label}</span>
               {badge && <span className={`status-badge status-${badge}`}>{badge}</span>}
+              {hasResults && duplicateGroupCount > 0 ? (
+                <span className="duplicates-header-badge">Duplicates Found: {duplicateGroupCount}</span>
+              ) : null}
             </h2>
             <div className="view-toggle" role="tablist" aria-label="Requirements view">
               <button
@@ -192,6 +196,18 @@ const Home = () => {
                 onClick={() => setOutputView(OUTPUT_VIEW.LIST)}
               >
                 List
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={outputView === OUTPUT_VIEW.ANALYSIS}
+                className={`view-toggle-btn${outputView === OUTPUT_VIEW.ANALYSIS ? " active" : ""}`}
+                onClick={() => {
+                  if (!requirements || status !== STATUS.SUCCESS) return;
+                  setOutputView(OUTPUT_VIEW.ANALYSIS);
+                }}
+              >
+                Analysis
               </button>
               <button
                 type="button"

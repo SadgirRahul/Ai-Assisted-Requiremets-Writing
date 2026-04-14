@@ -4,15 +4,38 @@ import Tree from "react-d3-tree";
 import "../components/RequirementsOutput.css";
 import "./RequirementsTreePage.css";
 
+const BRANCH_STYLES = {
+  root: { fill: "#EEEDFE", border: "#7F77DD", text: "#3C3489" },
+  functional: { fill: "#E6F1FB", border: "#378ADD", text: "#0C447C" },
+  nonFunctional: { fill: "#E1F5EE", border: "#1D9E75", text: "#085041" },
+  domain: { fill: "#FAEEDA", border: "#BA7517", text: "#633806" },
+  constraints: { fill: "#FAECE7", border: "#D85A30", text: "#712B13" },
+  businessRules: { fill: "#FBEAF0", border: "#D4537E", text: "#72243E" },
+  transition: { fill: "#EAF3DE", border: "#639922", text: "#27500A" },
+};
+
+const TOP_BRANCH_ORDER = [
+  "functional",
+  "nonFunctional",
+  "domain",
+  "constraints",
+  "businessRules",
+  "transition",
+];
+
+const TOP_BRANCH_LABEL = {
+  functional: "Functional",
+  nonFunctional: "Non-Functional",
+  domain: "Domain",
+  constraints: "Constraints",
+  businessRules: "Business Rules",
+  transition: "Transition",
+};
+
 const COLORS = {
-  root: "#3C3489",
-  functional: "#0C447C",
-  nonFunctional: "#085041",
-  functionalLight: "#B5D4F4",
-  nonFunctionalLight: "#9FE1CB",
-  leaf: "#F1EFE8",
-  leafBorder: "#B4B2A9",
-  leafText: "#444441",
+  high: "#ef4444",
+  medium: "#f59e0b",
+  low: "#22c55e",
 };
 
 const normalizeCategory = (value) => String(value || "").trim().toLowerCase();
@@ -47,6 +70,54 @@ const nodeKey = (nodeDatum) => {
   return `${t}:${b}:${n}:${leafId}`;
 };
 
+const priorityDot = (priority = "") => {
+  const p = normalizePriority(priority);
+  if (p === "HIGH") return COLORS.high;
+  if (p === "MEDIUM") return COLORS.medium;
+  if (p === "LOW") return COLORS.low;
+  return "#64748b";
+};
+
+const snippet = (text = "", max = 32) => {
+  const clean = String(text || "").trim().replace(/\s+/g, " ");
+  if (!clean) return "Requirement";
+  if (clean.length <= max) return clean;
+  return `${clean.slice(0, max - 1)}...`;
+};
+
+const inferTopBranch = (req) => {
+  const text = `${req.description || ""} ${req.category || ""} ${req.subcategory || ""}`.toLowerCase();
+  if (/\b(pricing|discount|eligibility|approval|workflow rule|business rule)\b/.test(text)) {
+    return "businessRules";
+  }
+  if (/\b(technical constraint|regulatory constraint|resource constraint|environmental constraint|constraint)\b/.test(text)) {
+    return "constraints";
+  }
+  if (/\b(compliance|domain rule|industry standard|standard)\b/.test(text)) {
+    return "domain";
+  }
+  if (/\b(data migration|training|parallel operation|cutover|rollback|transition)\b/.test(text)) {
+    return "transition";
+  }
+  return req.__type === "functional" ? "functional" : "nonFunctional";
+};
+
+const makeParentAndNodeMaps = (tree) => {
+  const parentMap = new Map();
+  const nodeMap = new Map();
+
+  const visit = (node, parent = null) => {
+    if (!node?.nodeId) return;
+    nodeMap.set(node.nodeId, node);
+    parentMap.set(node.nodeId, parent?.nodeId || null);
+    const children = Array.isArray(node.children) ? node.children : [];
+    children.forEach((child) => visit(child, node));
+  };
+
+  tree.forEach((root) => visit(root, null));
+  return { parentMap, nodeMap };
+};
+
 const RequirementsTreePage = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -64,8 +135,10 @@ const RequirementsTreePage = () => {
   const [selectedLeaf, setSelectedLeaf] = useState(null);
   const [priorityFilter, setPriorityFilter] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [zoom, setZoom] = useState(0.82);
-  const [translate, setTranslate] = useState({ x: 0, y: 80 });
+  const [zoom, setZoom] = useState(0.8);
+  const [translate, setTranslate] = useState({ x: 0, y: 72 });
+  const [hoveredNodeId, setHoveredNodeId] = useState(null);
+  const [isTreeReady, setIsTreeReady] = useState(false);
 
   useEffect(() => {
     if (!treeWrapRef.current) return;
@@ -75,7 +148,7 @@ const RequirementsTreePage = () => {
       const width = Math.max(0, Math.floor(rect.width));
       const height = Math.max(0, Math.floor(rect.height));
       setTreeSize({ width, height });
-      setTranslate({ x: Math.floor(width / 2), y: 80 });
+      setTranslate({ x: Math.floor(width / 2), y: 72 });
     };
     update();
     const ro = new ResizeObserver(update);
@@ -91,7 +164,7 @@ const RequirementsTreePage = () => {
     const norm = (v) => normalize(v).toLowerCase();
 
     const makeLeaf = (req, idx, branch, category) => ({
-      name: normalize(req.id, `#${idx + 1}`),
+      name: normalize(req.id, `FR-${idx + 1}`),
       nodeType: "leaf",
       branch,
       nodeId: `leaf:${branch}:${norm(category)}:${norm(req.id || `#${idx + 1}`)}:${idx}`,
@@ -169,30 +242,63 @@ const RequirementsTreePage = () => {
         });
     };
 
+    const allReqs = [
+      ...functional_requirements.map((r) => ({ ...r, __type: "functional" })),
+      ...non_functional_requirements.map((r) => ({ ...r, __type: "nonFunctional" })),
+    ];
+
+    const branchBuckets = {
+      functional: [],
+      nonFunctional: [],
+      domain: [],
+      constraints: [],
+      businessRules: [],
+      transition: [],
+    };
+
+    allReqs.forEach((r) => {
+      const key = inferTopBranch(r);
+      branchBuckets[key].push(r);
+    });
+
+    const topChildren = TOP_BRANCH_ORDER.filter((k) => branchBuckets[k].length > 0).map((k) => ({
+      name: TOP_BRANCH_LABEL[k],
+      nodeType: "branch",
+      branch: k,
+      nodeId: `branch:${k}`,
+      children: buildBranch(branchBuckets[k], k),
+    }));
+
     return [
       {
         name: "Requirements",
         nodeType: "root",
         nodeId: "root",
-        children: [
-          {
-            name: "Functional",
-            nodeType: "branch",
-            branch: "functional",
-            nodeId: "branch:functional",
-            children: buildBranch(functional_requirements, "functional"),
-          },
-          {
-            name: "Non-Functional",
-            nodeType: "branch",
-            branch: "nonFunctional",
-            nodeId: "branch:nonFunctional",
-            children: buildBranch(non_functional_requirements, "nonFunctional"),
-          },
-        ],
+        children: topChildren,
       },
     ];
   }, [functional_requirements, non_functional_requirements]);
+
+  const { parentMap, nodeMap } = useMemo(() => makeParentAndNodeMaps(treeData), [treeData]);
+
+  const highlightedEdges = useMemo(() => {
+    if (!hoveredNodeId || !nodeMap.has(hoveredNodeId)) return new Set();
+    const edges = new Set();
+    let cursor = hoveredNodeId;
+    while (cursor) {
+      const parent = parentMap.get(cursor);
+      if (!parent) break;
+      edges.add(`${parent}->${cursor}`);
+      cursor = parent;
+    }
+    return edges;
+  }, [hoveredNodeId, nodeMap, parentMap]);
+
+  useEffect(() => {
+    setIsTreeReady(false);
+    const t = setTimeout(() => setIsTreeReady(true), 30);
+    return () => clearTimeout(t);
+  }, [treeData]);
 
   const getScopedRequirements = () => {
     const fn = functional_requirements || [];
@@ -235,8 +341,8 @@ const RequirementsTreePage = () => {
 
   const fitToScreen = () => {
     if (!treeSize.width) return;
-    setTranslate({ x: Math.floor(treeSize.width / 2), y: 80 });
-    setZoom(0.82);
+    setTranslate({ x: Math.floor(treeSize.width / 2), y: 72 });
+    setZoom(0.8);
   };
 
   const zoomIn = () => setZoom((z) => Math.min(2, +(z + 0.12).toFixed(2)));
@@ -267,50 +373,32 @@ const RequirementsTreePage = () => {
     const isRoot = t === "root";
     const isBranch = t === "branch";
     const isCategory = t === "category";
+    const isSubcategory = t === "subcategory";
     const isLeaf = t === "leaf";
 
     const categoryLines = isCategory ? splitCategoryLabel(nodeDatum?.name || "") : [String(nodeDatum?.name || "")];
     const isTwoLineCategory = isCategory && categoryLines.length === 2;
 
-    const width = Math.min(Math.max(80, String(nodeDatum?.name || "").length * 9 + 32), 200);
-    const height = isRoot ? 48 : isBranch ? 44 : isCategory ? (isTwoLineCategory ? 52 : 40) : 34;
-    const rx = isLeaf ? 8 : 10;
-    const ry = isLeaf ? 8 : 10;
-
-    const fill = isRoot
-      ? COLORS.root
+    const width = isRoot
+      ? Math.max(160, Math.min(250, String(nodeDatum?.name || "").length * 9 + 30))
       : isBranch
-        ? b === "functional"
-          ? COLORS.functional
-          : COLORS.nonFunctional
-        : isCategory
-          ? b === "functional"
-            ? COLORS.functionalLight
-            : COLORS.nonFunctionalLight
-          : COLORS.leaf;
+        ? Math.max(140, Math.min(220, String(nodeDatum?.name || "").length * 8 + 28))
+        : Math.max(120, Math.min(210, String(nodeDatum?.name || "").length * 8 + 24));
+    const height = isRoot ? 48 : isBranch ? 44 : 36;
+    const rx = isLeaf ? 12 : isRoot ? 16 : 12;
+    const ry = rx;
 
-    const baseStroke = isLeaf
-      ? COLORS.leafBorder
-      : isRoot
-        ? COLORS.root
-        : b === "functional"
-          ? COLORS.functional
-          : COLORS.nonFunctional;
+    const branchStyle = BRANCH_STYLES[b] || BRANCH_STYLES.root;
+    const fill = isRoot ? BRANCH_STYLES.root.fill : branchStyle.fill;
+    const baseStroke = isRoot ? BRANCH_STYLES.root.border : branchStyle.border;
 
-    const stroke = isSelected ? "#111827" : baseStroke;
-    const textColor = isRoot
-      ? "#F4F1FF"
-      : isBranch
-        ? b === "functional"
-          ? "#EAF4FF"
-          : "#E9FBF4"
-        : isCategory
-          ? b === "functional"
-            ? "#0A3F73"
-            : "#07483B"
-          : "#3F3F3A";
-    const fontSize = isRoot ? 14 : isBranch ? 13 : isCategory ? 13 : 12;
-    const fontWeight = isRoot || isBranch ? 600 : 500;
+    const stroke = isSelected ? baseStroke : baseStroke;
+    const textColor = isRoot ? BRANCH_STYLES.root.text : branchStyle.text;
+    const fontSize = isRoot ? 15 : isBranch ? 14 : 13;
+    const fontWeight = isRoot ? 600 : isBranch ? 500 : 400;
+    const childCount = Array.isArray(nodeDatum?.children) ? nodeDatum.children.length : 0;
+    const collapsedChildrenCount = Array.isArray(nodeDatum?._children) ? nodeDatum._children.length : 0;
+    const depth = nodeDatum?.__rd3t?.depth ?? 0;
 
     // Optional safety: truncate long single-word category labels to avoid overflow.
     const safeLines = isCategory
@@ -324,7 +412,12 @@ const RequirementsTreePage = () => {
     const letterSpacing = isRoot || isBranch ? "0.025em" : "0.02em";
 
     return (
-      <g onClick={() => handleTreeNodeClick(nodeDatum)} style={{ cursor: "pointer" }}>
+      <g
+        onClick={() => handleTreeNodeClick(nodeDatum)}
+        onMouseEnter={() => setHoveredNodeId(nodeDatum?.nodeId || key)}
+        onMouseLeave={() => setHoveredNodeId(null)}
+        style={{ cursor: "pointer", opacity: isTreeReady ? 1 : 0, animation: `treeNodeFade 240ms ease ${depth * 80}ms both` }}
+      >
         <rect
           x={-width / 2}
           y={-height / 2}
@@ -334,10 +427,19 @@ const RequirementsTreePage = () => {
           ry={ry}
           fill={fill}
           stroke={stroke}
-          strokeWidth={1.5}
+          strokeWidth={isSelected ? 2.3 : 1.3}
         />
+        {isLeaf ? (
+          <circle
+            cx={-width / 2 + 11}
+            cy={0}
+            r={4.2}
+            fill={priorityDot(nodeDatum?.requirement?.priority || nodeDatum?.reqData?.priority)}
+          />
+        ) : null}
         <text
-          textAnchor="middle"
+          x={isLeaf ? -width / 2 + 21 : 0}
+          textAnchor={isLeaf ? "start" : "middle"}
           dominantBaseline="central"
           style={{
             fontSize: effectiveFontSize,
@@ -349,7 +451,7 @@ const RequirementsTreePage = () => {
             wordSpacing: "0.03em",
           }}
         >
-          <title>{nodeDatum.name}</title>
+          <title>{nodeDatum.name}{nodeDatum?.requirement?.description ? `\n${nodeDatum.requirement.description}` : ""}</title>
           {isTwoLineCategory ? (
             <>
               <tspan x="0" dy="-0.38em">{safeLines[0]}</tspan>
@@ -359,6 +461,14 @@ const RequirementsTreePage = () => {
             <tspan x="0" dy="0.1em">{safeLines[0]}</tspan>
           )}
         </text>
+        {!isLeaf && collapsedChildrenCount > 0 ? (
+          <g>
+            <rect x={width / 2 - 24} y={-height / 2 + 2} width={20} height={14} rx={7} fill={stroke} />
+            <text x={width / 2 - 14} y={-height / 2 + 9} textAnchor="middle" dominantBaseline="central" style={{ fontSize: 9, fontWeight: 700, fill: "#ffffff" }}>
+              +{Math.min(collapsedChildrenCount, 99)}
+            </text>
+          </g>
+        ) : null}
       </g>
     );
   };
@@ -467,10 +577,20 @@ const RequirementsTreePage = () => {
           {selectedDomain ? <span className="tree-domain-pill">{selectedDomain}</span> : null}
         </div>
         <div className="tree-controls">
-          <button type="button" onClick={zoomOut}>-</button>
+          <button type="button" onClick={zoomOut}>−</button>
           <button type="button" onClick={zoomIn}>+</button>
           <button type="button" onClick={fitToScreen}>Fit to screen</button>
         </div>
+      </div>
+
+      <div className="tree-legend" aria-label="Tree legend">
+        <span><i className="dot root" />Root</span>
+        <span><i className="dot functional" />Functional</span>
+        <span><i className="dot nonfunctional" />Non-Functional</span>
+        <span><i className="dot domain" />Domain</span>
+        <span><i className="dot constraints" />Constraints</span>
+        <span><i className="dot businessRules" />Business Rules</span>
+        <span><i className="dot transition" />Transition</span>
       </div>
 
       <div className="tree-canvas-wrap" ref={treeWrapRef}>
@@ -480,15 +600,60 @@ const RequirementsTreePage = () => {
             orientation="vertical"
             translate={translate}
             zoom={zoom}
-            nodeSize={{ x: 220, y: 140 }}
-            separation={{ siblings: 1.4, nonSiblings: 1.8 }}
+            nodeSize={{ x: 220, y: 84 }}
+            separation={{ siblings: 1.1, nonSiblings: 1.28 }}
             renderCustomNodeElement={renderNode}
+            pathClassFunc={(linkData) => {
+              const targetBranch = linkData?.target?.data?.branch || linkData?.target?.branch;
+              const sourceId = linkData?.source?.data?.nodeId || linkData?.source?.nodeId;
+              const targetId = linkData?.target?.data?.nodeId || linkData?.target?.nodeId;
+              const edgeKey = `${sourceId}->${targetId}`;
+              const active = highlightedEdges.has(edgeKey) ? " tree-link-active" : "";
+
+              if (targetBranch === "functional") return `tree-link tree-link-functional${active}`;
+              if (targetBranch === "nonFunctional") return `tree-link tree-link-nonfunctional${active}`;
+              if (targetBranch === "domain") return `tree-link tree-link-domain${active}`;
+              if (targetBranch === "constraints") return `tree-link tree-link-constraints${active}`;
+              if (targetBranch === "businessRules") return `tree-link tree-link-businessRules${active}`;
+              if (targetBranch === "transition") return `tree-link tree-link-transition${active}`;
+              return `tree-link${active}`;
+            }}
             zoomable
             collapsible
             enableLegacyTransitions
-            pathFunc="diagonal"
+            transitionDuration={200}
+            pathFunc="elbow"
           />
         ) : null}
+      </div>
+
+      <div className="tree-minimap" aria-hidden="true">
+        <Tree
+          data={treeData}
+          orientation="vertical"
+          translate={{ x: 60, y: 14 }}
+          zoom={0.18}
+          nodeSize={{ x: 220, y: 84 }}
+          separation={{ siblings: 1.1, nonSiblings: 1.28 }}
+          renderCustomNodeElement={({ nodeDatum }) => (
+            <g>
+              <rect x={-3} y={-3} width={6} height={6} rx={2} fill={(BRANCH_STYLES[nodeDatum?.branch] || BRANCH_STYLES.root).border} />
+            </g>
+          )}
+          pathClassFunc={(linkData) => {
+            const targetBranch = linkData?.target?.data?.branch || linkData?.target?.branch;
+            if (targetBranch === "functional") return "tree-link tree-link-functional";
+            if (targetBranch === "nonFunctional") return "tree-link tree-link-nonfunctional";
+            if (targetBranch === "domain") return "tree-link tree-link-domain";
+            if (targetBranch === "constraints") return "tree-link tree-link-constraints";
+            if (targetBranch === "businessRules") return "tree-link tree-link-businessRules";
+            if (targetBranch === "transition") return "tree-link tree-link-transition";
+            return "tree-link";
+          }}
+          zoomable={false}
+          collapsible={false}
+          pathFunc="elbow"
+        />
       </div>
       {renderLeafDetailCard()}
 

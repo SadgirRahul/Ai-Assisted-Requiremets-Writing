@@ -74,13 +74,11 @@ const DomainSelect = ({ selectedDomain, onSelect, onContinue }) => {
           );
         })}
       </div>
-      {selectedDomain ? (
-        <div className="domain-select__actions">
-          <button type="button" className="domain-continue" onClick={onContinue}>
-            Continue
-          </button>
-        </div>
-      ) : null}
+      <div className="domain-select__actions">
+        <button type="button" className="domain-continue" onClick={onContinue}>
+          {selectedDomain ? "Continue" : "Skip and Auto-Detect"}
+        </button>
+      </div>
     </div>
   );
 };

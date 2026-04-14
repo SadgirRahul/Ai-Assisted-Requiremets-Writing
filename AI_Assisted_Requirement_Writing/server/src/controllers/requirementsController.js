@@ -1,6 +1,71 @@
 const { parseFile } = require("../services/fileParser");
 const { generateRequirements, detectDomain } = require("../services/aiService");
 const { generateRequirementsAnthropic } = require("../services/anthropicService");
+const { enrichRequirementsWithQuality } = require("../services/qualityService");
+const { detectDuplicateGroups } = require("../services/duplicateService");
+
+const DOMAIN_ID_MAP = {
+  healthcare: "healthcare",
+  finance: "finance",
+  ecommerce: "ecommerce",
+  education: "education",
+  technology: "technology",
+  custom: "custom",
+};
+
+const normalizeDomainId = (value = "") =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+const mapDetectedDomainToId = (detected = "") => {
+  const n = normalizeDomainId(detected);
+  if (n.includes("health")) return DOMAIN_ID_MAP.healthcare;
+  if (n.includes("finance")) return DOMAIN_ID_MAP.finance;
+  if (n.includes("education")) return DOMAIN_ID_MAP.education;
+  if (n.includes("ecommerce") || n.includes("commerce") || n.includes("retail")) {
+    return DOMAIN_ID_MAP.ecommerce;
+  }
+  if (n.includes("technology") || n.includes("saas") || n.includes("software")) {
+    return DOMAIN_ID_MAP.technology;
+  }
+  return DOMAIN_ID_MAP.custom;
+};
+
+const confidenceToScore = (confidence = "low") => {
+  const c = String(confidence || "").toLowerCase();
+  if (c === "high") return 91;
+  if (c === "medium") return 78;
+  return 62;
+};
+
+const buildDuplicateMetadata = (requirements) => {
+  const functional = Array.isArray(requirements.functional_requirements)
+    ? requirements.functional_requirements
+    : [];
+  const nonFunctional = Array.isArray(requirements.non_functional_requirements)
+    ? requirements.non_functional_requirements
+    : [];
+
+  const combined = [...functional, ...nonFunctional];
+  const groups = detectDuplicateGroups(combined, 0.7).map((group, idx) => ({
+    groupId: `dup-${idx + 1}`,
+    items: group.map((item) => ({
+      id: item.id,
+      description: item.description,
+      priority: item.priority,
+      category: item.category,
+      similarity: typeof item.similarity === "number" ? item.similarity : undefined,
+    })),
+  }));
+
+  const duplicatesFound = groups.reduce((sum, g) => sum + g.items.length, 0);
+
+  return {
+    duplicatesFound,
+    groups,
+  };
+};
 
 const isUpstreamLlmError = (message = "") => {
   const m = String(message).toLowerCase();
@@ -37,6 +102,39 @@ const extractText = async (req, res) => {
     console.error("[extractText] Error:", error.message);
     // Parsing errors are user input problems (bad/unsupported docs), not server faults
     return res.status(400).json({ error: error.message || "Failed to extract text" });
+  }
+};
+
+/**
+ * POST /api/detect-domain
+ * Upload file and return detected domain + confidence.
+ */
+const detectDomainFromFile = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const text = await parseFile(req.file);
+    if (!text || text.trim().length === 0) {
+      return res.status(400).json({ error: "No text could be extracted from the file" });
+    }
+
+    const detection = await detectDomain(text);
+    const detectedDomainId = mapDetectedDomainToId(detection.detectedDomain);
+
+    return res.json({
+      detectedDomainId,
+      detectedDomainLabel: detection.detectedDomain,
+      confidence: detection.confidence,
+      confidenceScore: confidenceToScore(detection.confidence),
+      reason: detection.reason,
+    });
+  } catch (error) {
+    console.error("[detectDomainFromFile] Error:", error.message);
+    return res.status(isUpstreamLlmError(error.message) ? 503 : 500).json({
+      error: error.message || "Failed to detect domain",
+    });
   }
 };
 
@@ -158,11 +256,7 @@ const generateRequirementsMain = async (req, res) => {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
-    const domain =
-      typeof req.body.domain === "string" ? req.body.domain.trim() : "";
-    const forceDomain =
-      String(req.body.forceDomain || "").toLowerCase() === "true" ||
-      req.body.forceDomain === true;
+    const domain = typeof req.body.domain === "string" ? req.body.domain.trim() : "";
 
     // Step 1: extraction service (same logic as /api/extract-text)
     const text = await parseFile(req.file);
@@ -170,50 +264,37 @@ const generateRequirementsMain = async (req, res) => {
       return res.status(400).json({ error: "No text could be extracted from the file" });
     }
 
-    const normalizeDomain = (v = "") =>
-      String(v || "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, "");
+    let effectiveDomain = domain;
+    let autoDetection = null;
 
-    let mismatchInfo = null;
-    if (!forceDomain && domain && domain.toLowerCase() !== "custom") {
+    if (!effectiveDomain) {
       const detected = await detectDomain(text);
-      const selectedNorm = normalizeDomain(domain);
-      const detectedNorm = normalizeDomain(detected.detectedDomain);
-      const isMismatch = selectedNorm && detectedNorm && selectedNorm !== detectedNorm;
-
-      if (isMismatch && detected.confidence === "high") {
-        return res.status(200).json({
-          mismatch: true,
-          selectedDomain: domain,
-          detectedDomain: detected.detectedDomain,
-          confidence: detected.confidence,
-          reason: detected.reason,
-        });
-      }
-
-      if (isMismatch && (detected.confidence === "medium" || detected.confidence === "low")) {
-        mismatchInfo = {
-          hasMismatch: true,
-          selectedDomain: domain,
-          detectedDomain: detected.detectedDomain,
-          confidence: detected.confidence,
-        };
-      }
+      const detectedDomainId = mapDetectedDomainToId(detected.detectedDomain);
+      effectiveDomain = detectedDomainId === DOMAIN_ID_MAP.custom ? "" : detectedDomainId;
+      autoDetection = {
+        detectedDomainId,
+        detectedDomainLabel: detected.detectedDomain,
+        confidence: detected.confidence,
+        confidenceScore: confidenceToScore(detected.confidence),
+        reason: detected.reason,
+      };
     }
 
     // Step 2: LLM service (Anthropic)
     // LLM service: OpenRouter (matches the existing UI expectations)
-    const requirements = await generateRequirements(text, { domain });
-    const finalRequirements = mismatchInfo
-      ? { ...requirements, domainWarning: mismatchInfo }
-      : requirements;
+    const rawRequirements = await generateRequirements(text, { domain: effectiveDomain });
+    const requirementsWithQuality = enrichRequirementsWithQuality(rawRequirements);
+    const duplicates = buildDuplicateMetadata(requirementsWithQuality);
+    const requirements = {
+      ...requirementsWithQuality,
+      duplicates,
+    };
 
     // Step 3: return final requirements JSON
     return res.json({
-      domain: domain || null,
-      requirements: finalRequirements,
-      mismatch: mismatchInfo?.hasMismatch || false,
+      domain: effectiveDomain || null,
+      autoDetection,
+      requirements,
     });
   } catch (error) {
     console.error("[generateRequirementsMain] Error:", error.message);
@@ -225,6 +306,7 @@ const generateRequirementsMain = async (req, res) => {
 module.exports = {
   health,
   extractText,
+  detectDomainFromFile,
   uploadFile,
   uploadAndGenerate,
   uploadAndGenerateAnthropic,

@@ -1,7 +1,7 @@
 .tree-page {
   position: relative;
   min-height: 100vh;
-  background: #f8fafc;
+  background: #f8f7f4;
 }
 
 .tree-navbar {
@@ -12,7 +12,7 @@
   gap: 14px;
   padding: 0 14px;
   border-bottom: 1px solid #e5e7eb;
-  background: #fff;
+  background: #f8f7f4;
 }
 
 .tree-back-btn {
@@ -54,7 +54,7 @@
 
 .tree-controls button {
   border: 1px solid #d1d5db;
-  background: #fff;
+  background: #f8f7f4;
   color: #1f2937;
   border-radius: 8px;
   padding: 8px 10px;
@@ -65,8 +65,112 @@
 
 .tree-canvas-wrap {
   width: 100vw;
-  height: calc(100vh - 64px);
-  background: #fff;
+  height: calc(100vh - 146px);
+  background-color: #f8f7f4;
+  background-image: radial-gradient(#00000010 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.tree-legend {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 80;
+  min-height: 44px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-top: 0.5px solid #e0e0e0;
+  background: #ffffff;
+  color: #475569;
+  font-size: 0.78rem;
+}
+
+.tree-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tree-legend .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.tree-legend .dot.root { background: #3c3489; }
+.tree-legend .dot.functional { background: #0c447c; }
+.tree-legend .dot.nonfunctional { background: #085041; }
+.tree-legend .dot.domain { background: #ba7517; }
+.tree-legend .dot.constraints { background: #d85a30; }
+.tree-legend .dot.businessRules { background: #d4537e; }
+.tree-legend .dot.transition { background: #639922; }
+
+.tree-link {
+  fill: none;
+  stroke: #cbd5e1;
+  stroke-width: 0.8px;
+  stroke: #88878050;
+  transition: stroke 0.2s ease, stroke-width 0.2s ease;
+}
+
+.tree-link-functional {
+  stroke: #88878050;
+}
+
+.tree-link-nonfunctional {
+  stroke: #88878050;
+}
+
+.tree-link-domain,
+.tree-link-constraints,
+.tree-link-businessRules,
+.tree-link-transition {
+  stroke: #88878050;
+}
+
+.tree-link-active.tree-link-functional {
+  stroke: #378add;
+  stroke-width: 1.4px;
+}
+
+.tree-link-active.tree-link-nonfunctional {
+  stroke: #1d9e75;
+  stroke-width: 1.4px;
+}
+
+.tree-link-active.tree-link-domain {
+  stroke: #ba7517;
+  stroke-width: 1.4px;
+}
+
+.tree-link-active.tree-link-constraints {
+  stroke: #d85a30;
+  stroke-width: 1.4px;
+}
+
+.tree-link-active.tree-link-businessRules {
+  stroke: #d4537e;
+  stroke-width: 1.4px;
+}
+
+.tree-link-active.tree-link-transition {
+  stroke: #639922;
+  stroke-width: 1.4px;
+}
+
+@keyframes treeNodeFade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .tree-leaf-card-wrap {
@@ -151,7 +255,7 @@
   position: fixed;
   top: 64px;
   right: 0;
-  height: calc(100vh - 64px);
+  height: calc(100vh - 108px);
   width: 340px;
   background: #fff;
   border-left: 1px solid #e5e7eb;
@@ -162,6 +266,20 @@
   display: flex;
   flex-direction: column;
   padding: 14px;
+}
+
+.tree-minimap {
+  position: fixed;
+  right: 16px;
+  bottom: 58px;
+  width: 120px;
+  height: 80px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  overflow: hidden;
+  z-index: 70;
+  pointer-events: none;
 }
 
 .tree-drawer.open {
@@ -251,7 +369,19 @@
   }
 
   .tree-canvas-wrap {
-    height: calc(100vh - 134px);
+    height: calc(100vh - 212px);
+  }
+
+  .tree-legend {
+    min-height: 54px;
+    padding: 8px 10px;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+
+  .tree-minimap {
+    right: 10px;
+    bottom: 66px;
   }
 
   .tree-leaf-card {
@@ -261,6 +391,6 @@
   .tree-drawer {
     top: 0;
     width: 100vw;
-    height: 100vh;
+    height: calc(100vh - 54px);
   }
 }

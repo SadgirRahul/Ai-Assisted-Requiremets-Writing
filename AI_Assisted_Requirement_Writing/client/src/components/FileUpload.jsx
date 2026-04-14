@@ -32,13 +32,42 @@ const FileUpload = ({
   const [loading, setLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [status, setStatus] = useState(""); // step label shown under spinner
-  const [domainMismatch, setDomainMismatch] = useState(null);
+  const [detectingDomain, setDetectingDomain] = useState(false);
+  const [domainDetection, setDomainDetection] = useState(null);
+  const [domainDetectionError, setDomainDetectionError] = useState("");
+
+  const detectDomainFromFile = async (file) => {
+    setDetectingDomain(true);
+    setDomainDetection(null);
+    setDomainDetectionError("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await axios.post(`${API_BASE_URL}/detect-domain`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      const detected = response.data || {};
+      setDomainDetection(detected);
+      if (onDomainChange && detected.detectedDomainId && !selectedDomain) {
+        onDomainChange(detected.detectedDomainId);
+      }
+    } catch (err) {
+      const message =
+        err.response?.data?.error || err.message || "Domain auto-detection failed.";
+      setDomainDetectionError(message);
+    } finally {
+      setDetectingDomain(false);
+    }
+  };
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       setSelectedFile(file);
       if (onError) onError(null); // clear any previous error
+      detectDomainFromFile(file);
     }
   };
 
@@ -49,27 +78,20 @@ const FileUpload = ({
     if (file) {
       setSelectedFile(file);
       if (onError) onError(null);
+      detectDomainFromFile(file);
     }
   };
 
   const handleRemoveFile = (e) => {
     e.stopPropagation();
     setSelectedFile(null);
+    setDomainDetection(null);
+    setDomainDetectionError("");
     inputRef.current.value = "";
     if (onError) onError(null);
   };
 
-  const domainIdFromDetected = (detectedDomain = "") => {
-    const normalized = String(detectedDomain || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-    if (normalized.includes("health")) return "healthcare";
-    if (normalized.includes("finance")) return "finance";
-    if (normalized.includes("education")) return "education";
-    if (normalized.includes("ecommerce")) return "ecommerce";
-    if (normalized.includes("technology")) return "technology";
-    return "custom";
-  };
-
-  const submitGeneration = async ({ domainOverride, forceDomain = false } = {}) => {
+  const submitGeneration = async ({ domainOverride } = {}) => {
     if (!selectedFile) {
       if (onError) onError("Please select a PDF or Word file first.");
       return;
@@ -86,7 +108,6 @@ const FileUpload = ({
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("domain", domainOverride ?? selectedDomain ?? "");
-      if (forceDomain) formData.append("forceDomain", "true");
 
       setStatus("Extracting text…");
       const response = await axios.post(`${API_BASE_URL}/generate-requirements`, formData, {
@@ -99,14 +120,6 @@ const FileUpload = ({
           }
         },
       });
-
-      if (response.data?.mismatch && response.data?.confidence === "high") {
-        setDomainMismatch(response.data);
-        setStatus("Domain mismatch detected");
-        return;
-      }
-
-      setDomainMismatch(null);
       setStatus("Done!");
       if (onResult) onResult(response.data);
     } catch (err) {
@@ -133,6 +146,37 @@ const FileUpload = ({
           Domain: <strong>{domainLabel}</strong>
         </p>
       ) : null}
+
+      <div className="domain-picker-row">
+        <label htmlFor="domain-select">Domain</label>
+        <select
+          id="domain-select"
+          value={selectedDomain || ""}
+          onChange={(e) => onDomainChange && onDomainChange(e.target.value || null)}
+          disabled={loading}
+        >
+          <option value="">Auto-detect / not selected</option>
+          {DOMAIN_OPTIONS.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {detectingDomain ? (
+        <p className="domain-detecting">Detecting domain from document...</p>
+      ) : null}
+
+      {domainDetection?.detectedDomainId ? (
+        <div className="domain-confidence-badge" role="status" aria-live="polite">
+          <span className="badge-title">Auto-detected:</span>
+          <span className="badge-domain">{domainDetection.detectedDomainLabel}</span>
+          <span className="badge-confidence">{domainDetection.confidenceScore}% confident</span>
+        </div>
+      ) : null}
+
+      {domainDetectionError ? <p className="domain-detect-error">{domainDetectionError}</p> : null}
       {/* Drop zone */}
       <div
         className={`drop-zone ${
@@ -203,51 +247,11 @@ const FileUpload = ({
         {loading ? "⏳ Processing…" : "⚡ Generate Requirements"}
       </button>
 
-      {domainMismatch ? (
-        <div className="domain-mismatch-modal-backdrop" role="dialog" aria-modal="true">
-          <div className="domain-mismatch-modal">
-            <h3>Domain mismatch detected</h3>
-            <p>
-              Your document looks like <strong>{domainMismatch.detectedDomain}</strong> content but you
-              selected <strong> {domainLabel || domainMismatch.selectedDomain}</strong>. Generating with wrong domain
-              produces inaccurate requirements.
-            </p>
-            <div className="domain-mismatch-reason">{domainMismatch.reason}</div>
-            <div className="domain-mismatch-actions">
-              <button
-                type="button"
-                className="mismatch-btn primary"
-                onClick={async () => {
-                  const detectedId = domainIdFromDetected(domainMismatch.detectedDomain);
-                  if (onDomainChange) onDomainChange(detectedId);
-                  setDomainMismatch(null);
-                  await submitGeneration({ domainOverride: detectedId, forceDomain: false });
-                }}
-              >
-                Use {domainMismatch.detectedDomain} instead
-              </button>
-              <button
-                type="button"
-                className="mismatch-btn warning"
-                onClick={async () => {
-                  setDomainMismatch(null);
-                  await submitGeneration({ forceDomain: true });
-                }}
-              >
-                Continue with {domainLabel || domainMismatch.selectedDomain} anyway
-              </button>
-              <button
-                type="button"
-                className="mismatch-btn subtle"
-                onClick={() => {
-                  setDomainMismatch(null);
-                  if (onBackToDomainSelect) onBackToDomainSelect();
-                }}
-              >
-                Go back and reselect
-              </button>
-            </div>
-          </div>
+      {onBackToDomainSelect ? (
+        <div className="file-upload-actions-row">
+          <button type="button" className="back-to-domain-btn" onClick={onBackToDomainSelect}>
+            Back to domain cards
+          </button>
         </div>
       ) : null}
     </div>
