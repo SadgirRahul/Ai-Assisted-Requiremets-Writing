@@ -1,4 +1,5 @@
 import React from "react";
+import { GraduationCap, HeartPulse, Landmark, Monitor, ShoppingCart, Sparkles } from "lucide-react";
 import "./DomainSelect.css";
 
 export const DOMAIN_OPTIONS = [
@@ -6,37 +7,37 @@ export const DOMAIN_OPTIONS = [
     id: "healthcare",
     name: "Healthcare",
     subtitle: "Clinical systems, HIPAA, patient workflows",
-    icon: "🏥",
+    icon: HeartPulse,
   },
   {
     id: "finance",
     name: "Finance",
     subtitle: "Banking, payments, compliance & risk",
-    icon: "🏦",
+    icon: Landmark,
   },
   {
     id: "ecommerce",
     name: "E-commerce",
     subtitle: "Catalogs, carts, checkout & fulfillment",
-    icon: "🛒",
+    icon: ShoppingCart,
   },
   {
     id: "education",
     name: "Education",
     subtitle: "LMS, courses, assessments & reporting",
-    icon: "📚",
+    icon: GraduationCap,
   },
   {
     id: "technology",
     name: "Technology",
     subtitle: "SaaS, APIs, platforms & integrations",
-    icon: "💻",
+    icon: Monitor,
   },
   {
     id: "custom",
     name: "Custom",
     subtitle: "Define your own domain context",
-    icon: "✨",
+    icon: Sparkles,
   },
 ];
 
@@ -55,6 +56,7 @@ const DomainSelect = ({ selectedDomain, onSelect, onContinue }) => {
       <div className="domain-grid" role="list">
         {DOMAIN_OPTIONS.map((d) => {
           const isSelected = selectedDomain === d.id;
+          const Icon = d.icon;
           return (
             <button
               key={d.id}
@@ -66,7 +68,7 @@ const DomainSelect = ({ selectedDomain, onSelect, onContinue }) => {
               aria-label={`${d.name}. ${d.subtitle}`}
             >
               <span className="domain-card__icon" aria-hidden>
-                {d.icon}
+                <Icon size={20} />
               </span>
               <span className="domain-card__name">{d.name}</span>
               <span className="domain-card__subtitle">{d.subtitle}</span>

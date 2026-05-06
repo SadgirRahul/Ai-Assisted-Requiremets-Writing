@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import { FileText, Loader2, Paperclip, X, Zap } from "lucide-react";
 import axios from "axios";
 import { DOMAIN_OPTIONS } from "./DomainSelect";
 import "./FileUpload.css";
@@ -187,7 +188,7 @@ const FileUpload = ({
         onDragLeave={() => setDragOver(false)}
         onDrop={!loading ? handleDrop : undefined}
       >
-        <div className="drop-icon">{selectedFile ? "📎" : "📄"}</div>
+        <div className="drop-icon">{selectedFile ? <Paperclip size={22} /> : <FileText size={22} />}</div>
         <p>
           {selectedFile
             ? selectedFile.name
@@ -207,14 +208,17 @@ const FileUpload = ({
       {/* Selected file info bar */}
       {selectedFile && !loading && (
         <div className="selected-file-info">
-          <span>📎 {selectedFile.name}</span>
+          <span className="selected-file-name">
+            <Paperclip size={14} />
+            {selectedFile.name}
+          </span>
           <span className="file-size">({(selectedFile.size / 1024).toFixed(1)} KB)</span>
           <button
             className="remove-btn"
             onClick={handleRemoveFile}
             title="Remove file"
           >
-            ✕
+            <X size={14} />
           </button>
         </div>
       )}
@@ -244,7 +248,17 @@ const FileUpload = ({
         onClick={handleGenerate}
         disabled={!selectedFile || loading}
       >
-        {loading ? "⏳ Processing…" : "⚡ Generate Requirements"}
+        {loading ? (
+          <span className="generate-label">
+            <Loader2 size={16} />
+            Processing…
+          </span>
+        ) : (
+          <span className="generate-label">
+            <Zap size={16} />
+            Generate Requirements
+          </span>
+        )}
       </button>
 
       {onBackToDomainSelect ? (

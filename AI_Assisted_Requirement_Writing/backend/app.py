@@ -79,6 +79,21 @@ def analyze_developer():
 Requirement: {req['description']}
 Domain: {domain}
 
+Important constraints for time estimation:
+- Developers are using AI coding assistants like 
+  GitHub Copilot and Cursor in 2025
+- Modern frameworks like React, Next.js, Express 
+  have ready-made solutions for most features
+- NPM/PyPI packages handle authentication, payments, 
+  file uploads, charts out of the box
+- Maximum estimated_hours for ANY requirement must 
+    not exceed 20 hours
+- Simple display/read features: 2 to 4 hours
+- Standard CRUD with validation: 4 to 8 hours
+- Complex features like payments or auth: 10 to 16 hours
+- Only the most complex integrations: up to 20 hours
+- Never return estimated_hours above 20
+
 Respond with raw JSON only. No markdown. No code blocks.
 Start directly with open curly brace.
 
@@ -100,7 +115,9 @@ Start directly with open curly brace.
     "level": "Medium",
     "score": 6,
     "reason": "Reason here",
-    "estimated_hours": 12
+        "estimated_hours": 12
+The estimated_hours value must never exceed 20. 
+Keep it between 2 and 20 only.
   }}
 }}"""
 

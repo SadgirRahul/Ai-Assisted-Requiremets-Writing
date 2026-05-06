@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
+import { AlertTriangle, CheckSquare, ClipboardList, Compass, FolderUp, Loader2, RotateCcw, X } from "lucide-react";
 import DomainSelect, { DOMAIN_OPTIONS } from "../components/DomainSelect";
 import FileUpload from "../components/FileUpload";
 import RequirementsOutput from "../components/RequirementsOutput";
@@ -135,10 +136,10 @@ const Home = () => {
   // Human-readable output panel header
   const outputHeading = () => {
     if (status === STATUS.LOADING)
-      return { label: "Generating…", badge: "loading", icon: "⏳" };
+      return { label: "Generating…", badge: "loading", icon: <Loader2 size={16} /> };
     if (status === STATUS.SUCCESS)
-      return { label: "Generated Requirements", badge: "success", icon: "✅" };
-    return { label: "Generated Requirements", badge: "", icon: "📋" };
+      return { label: "Generated Requirements", badge: "success", icon: <CheckSquare size={16} /> };
+    return { label: "Generated Requirements", badge: "", icon: <ClipboardList size={16} /> };
   };
 
   const { label, badge, icon } = outputHeading();
@@ -326,9 +327,12 @@ const Home = () => {
       {/* ── Error banner ──────────────────────────── */}
       {error && (
         <div className="error-banner" role="alert">
-          <span>⚠️ {error}</span>
+          <span className="error-message">
+            <AlertTriangle size={16} />
+            {error}
+          </span>
           <button className="error-close" onClick={dismissError} aria-label="Dismiss error">
-            ✕
+            <X size={14} />
           </button>
         </div>
       )}
@@ -339,10 +343,23 @@ const Home = () => {
         {/* Input Panel */}
         <section className="panel input-panel" aria-label="Input section">
           <div className="panel-header">
-            <h2>{showUpload ? "📂 Upload document" : "🧭 Choose domain"}</h2>
+            <h2 className="panel-title">
+              {showUpload ? (
+                <>
+                  <FolderUp size={18} />
+                  <span>Upload document</span>
+                </>
+              ) : (
+                <>
+                  <Compass size={18} />
+                  <span>Choose domain</span>
+                </>
+              )}
+            </h2>
             {(requirements || error || showUpload || selectedDomain) && (
               <button className="reset-btn" onClick={handleReset} title="Start over">
-                ↺ Reset
+                <RotateCcw size={14} />
+                Reset
               </button>
             )}
           </div>

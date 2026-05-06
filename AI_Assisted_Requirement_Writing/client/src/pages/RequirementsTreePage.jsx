@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { ArrowLeft, MousePointer2, X } from "lucide-react";
 import Tree from "react-d3-tree";
 import "../components/RequirementsOutput.css";
 import "./RequirementsTreePage.css";
@@ -524,7 +525,7 @@ const RequirementsTreePage = () => {
             aria-label="Close requirement details"
             onClick={() => setSelectedLeaf(null)}
           >
-            ✕
+            <X size={14} />
           </button>
           <div className="tree-leaf-card-header">
             <span className="req-id">{id}</span>
@@ -551,7 +552,8 @@ const RequirementsTreePage = () => {
             className="tree-back-btn"
             onClick={() => navigate("/", { state: { ...location.state, returnView: "tree" } })}
           >
-            ← Back to Results
+            <ArrowLeft size={14} />
+            Back to Results
           </button>
         </div>
         <div className="tree-empty">
@@ -570,7 +572,8 @@ const RequirementsTreePage = () => {
           className="tree-back-btn"
           onClick={() => navigate("/", { state: { ...location.state, returnView: "tree" } })}
         >
-          ← Back to Results
+          <ArrowLeft size={14} />
+          Back to Results
         </button>
         <div className="tree-navbar-meta">
           <h3>Requirements Tree</h3>
@@ -666,7 +669,7 @@ const RequirementsTreePage = () => {
             </p>
           </div>
           <button type="button" className="tree-drawer-close" onClick={() => setIsDrawerOpen(false)}>
-            ✕
+            <X size={14} />
           </button>
         </div>
 
@@ -687,7 +690,9 @@ const RequirementsTreePage = () => {
           renderRequirementCards(scopedRequirements)
         ) : (
           <div className="req-tree-detail-empty">
-            <div className="placeholder-icon">👆</div>
+            <div className="placeholder-icon" aria-hidden>
+              <MousePointer2 size={20} />
+            </div>
             <p>Select a node</p>
             <span>Click root/branch/category/ID to see details.</span>
           </div>
