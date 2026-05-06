@@ -303,6 +303,142 @@ const generateRequirementsMain = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/analyze-developer
+ * Accepts array of requirements and domain, returns developer analysis (tasks, tech stack, complexity)
+ */
+const analyzeDeveloper = async (req, res) => {
+  try {
+    const axios = require("axios");
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    const modelName = process.env.OPENROUTER_MODEL || "qwen/qwen3-8b";
+
+    console.log("API KEY FOUND:", apiKey ? "YES" : "NO");
+    console.log("KEY STARTS WITH:", apiKey ? apiKey.substring(0, 15) : "NOTHING");
+
+    const body = req.body || {};
+    const requirements = body.requirements || [];
+    const domain = body.domain || "General";
+
+    if (!Array.isArray(requirements)) {
+      return res.status(400).json({ error: "`requirements` must be an array" });
+    }
+
+    if (!apiKey) {
+      return res.status(503).json({ error: "OPENROUTER_API_KEY is not configured" });
+    }
+
+    const results = [];
+
+    for (const req of requirements) {
+      if (typeof req !== "object" || !req) continue;
+      if (String(req.type || "").toLowerCase() !== "functional") continue;
+
+      const prompt = `You are a senior software engineer.
+Requirement: ${req.description || ""}
+Domain: ${domain}
+
+Respond with raw JSON only. No markdown. No code blocks.
+Start directly with open curly brace.
+
+{
+  "tasks": [
+    "Task 1",
+    "Task 2", 
+    "Task 3",
+    "Task 4",
+    "Task 5"
+  ],
+  "tech_stack": {
+    "frontend": ["React", "Tailwind CSS"],
+    "backend": ["Node.js", "Express"],
+    "database": ["MongoDB"],
+    "other": ["JWT"]
+  },
+  "complexity": {
+    "level": "Medium",
+    "score": 6,
+    "reason": "Reason here",
+    "estimated_hours": 12
+  }
+}`;
+
+      try {
+        const response = await axios.post(
+          "https://openrouter.ai/api/v1/chat/completions",
+          {
+            model: modelName,
+            messages: [{ role: "user", content: prompt }],
+          },
+          {
+            headers: {
+              "Authorization": `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": "http://localhost:3000",
+              "X-Title": "AI Requirements Tool",
+            },
+            timeout: 30000,
+          }
+        );
+
+        console.log("STATUS CODE:", response.status);
+
+        if (response.status !== 200) {
+          console.log("ERROR:", response.statusText);
+          continue;
+        }
+
+        let raw = response.data?.choices?.[0]?.message?.content || "";
+        console.log("RAW RESPONSE:", raw.substring(0, 300));
+
+        raw = raw.trim();
+        raw = raw.replace(/^```json\s*/, "");
+        raw = raw.replace(/^```\s*/, "");
+        raw = raw.replace(/```$/, "");
+        raw = raw.trim();
+
+        let parsed;
+        try {
+          parsed = JSON.parse(raw);
+        } catch (e) {
+          console.log("PARSE FAILED:", e.message);
+          console.log("FULL RAW:", raw);
+          parsed = {
+            tasks: [],
+            tech_stack: {
+              frontend: [],
+              backend: [],
+              database: [],
+              other: [],
+            },
+            complexity: {
+              level: "Medium",
+              score: 5,
+              reason: "Parse failed",
+              estimated_hours: 0,
+            },
+          };
+        }
+
+        results.push({
+          id: req.id || "",
+          description: req.description || "",
+          tasks: parsed.tasks || [],
+          tech_stack: parsed.tech_stack || {},
+          complexity: parsed.complexity || {},
+        });
+      } catch (err) {
+        console.log("REQUEST FAILED FOR", req.id, ":", err.message);
+      }
+    }
+
+    return res.json(results);
+  } catch (error) {
+    console.error("[analyzeDeveloper] Error:", error.message);
+    return res.status(500).json({ error: error.message || "Internal server error" });
+  }
+};
+
 module.exports = {
   health,
   extractText,
@@ -311,4 +447,5 @@ module.exports = {
   uploadAndGenerate,
   uploadAndGenerateAnthropic,
   generateRequirementsMain,
+  analyzeDeveloper,
 };

@@ -12,7 +12,7 @@ import "./Home.css";
 const STATUS = { IDLE: "idle", LOADING: "loading", SUCCESS: "success" };
 const OUTPUT_VIEW = { LIST: "list", ANALYSIS: "analysis", TREE: "tree" };
 const PANEL_TAB = { GENERATED: "generated", DEVELOPER: "developer" };
-const ANALYZE_DEVELOPER_ENDPOINT = import.meta.env.VITE_ANALYZE_DEVELOPER_URL || "http://localhost:5000/analyze-developer";
+const ANALYZE_DEVELOPER_ENDPOINT = import.meta.env.VITE_ANALYZE_DEVELOPER_URL || "http://localhost:5000/api/analyze-developer";
 
 const asArray = (value) => (Array.isArray(value) ? value : []);
 
@@ -180,10 +180,9 @@ const Home = () => {
 
     try {
       const requirementsArray = normalizedRequirementsForDeveloper;
-      const domainValue = selectedDomain || domainBadgeLabel || "General";
       const response = await axios.post(ANALYZE_DEVELOPER_ENDPOINT, {
         requirements: requirementsArray,
-        domain: domainValue,
+        domain: selectedDomain,
       });
 
       console.log("/analyze-developer response:", response.data);

@@ -9,11 +9,9 @@ from contextlib import redirect_stdout
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from dotenv import load_dotenv
 
-try:
-    from dotenv import load_dotenv
-except ImportError:
-    load_dotenv = None
+load_dotenv()
 
 from llm_client import LLMClient
 
@@ -21,7 +19,7 @@ from llm_client import LLMClient
 DEFAULT_INPUT_FILE = "sample.pdf"
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["http://localhost:3000", "http://localhost:3001"])
 
 
 def _backend_dir():
@@ -53,117 +51,112 @@ def _default_developer_payload() -> dict:
 
 @app.route('/analyze-developer', methods=['POST'])
 def analyze_developer():
-    _load_env()
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    print("API KEY FOUND:", "YES" if api_key else "NO")
+    print("KEY STARTS WITH:", api_key[:15] if api_key else "NOTHING")
 
-    key = os.getenv("OPENROUTER_API_KEY", "NOT FOUND")
-    print("KEY LOADED:", key[:20] if len(key) > 20 else key)
-
-    data = request.get_json(silent=True) or {}
-    requirements = data.get('requirements', [])
-    domain = data.get('domain', 'General')
+    data = request.get_json() or {}
+    requirements = data.get("requirements", [])
+    domain = data.get("domain", "General")
 
     if not isinstance(requirements, list):
         return jsonify({"error": "`requirements` must be an array"}), 400
 
-    llm_client = LLMClient()
-    openrouter_api_key = (llm_client.api_key or "").strip()
-    openrouter_model = (llm_client.model_name or "").strip() or "qwen/qwen3-8b"
+    import requests, os, re, json
 
-    if not openrouter_api_key:
-        return jsonify({"error": "OPENROUTER_API_KEY is not configured"}), 503
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    model_name = os.getenv("OPENROUTER_MODEL", "qwen/qwen3-8b")
 
     results = []
 
     for req in requirements:
         if not isinstance(req, dict):
             continue
-        if str(req.get('type', '')).lower() != 'functional':
+        if str(req.get("type", "")).lower() != "functional":
             continue
 
-        req_id = req.get('id')
-        description = req.get('description', '')
-        priority = req.get('priority', '')
+        prompt = f"""You are a senior software engineer.
+Requirement: {req['description']}
+Domain: {domain}
 
-        prompt = f"""You are a senior software engineer specializing in {domain} systems.
+Respond with raw JSON only. No markdown. No code blocks.
+Start directly with open curly brace.
 
-Analyze this requirement and return ONLY a JSON object.
-No markdown. No code blocks. No explanation.
-Start your response with {{ and end with }}
-
-Requirement: {description}
-Priority: {priority}
-
-Return exactly this structure:
 {{
   "tasks": [
-    "Specific developer task 1",
-    "Specific developer task 2", 
-    "Specific developer task 3",
-    "Specific developer task 4"
+    "Task 1",
+    "Task 2", 
+    "Task 3",
+    "Task 4",
+    "Task 5"
   ],
   "tech_stack": {{
     "frontend": ["React", "Tailwind CSS"],
     "backend": ["Node.js", "Express"],
     "database": ["MongoDB"],
-    "other": ["JWT", "bcrypt"]
+    "other": ["JWT"]
   }},
   "complexity": {{
     "level": "Medium",
     "score": 6,
-    "reason": "One sentence explaining complexity",
+    "reason": "Reason here",
     "estimated_hours": 12
   }}
 }}"""
 
-        headers = {
-            "Authorization": f"Bearer {openrouter_api_key}",
-            "Content-Type": "application/json"
-        }
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "http://localhost:3000",
+                "X-Title": "AI Requirements Tool"
+            },
+            json={
+                "model": model_name,
+                "messages": [{"role": "user", "content": prompt}]
+            },
+            timeout=30
+        )
 
-        payload = {
-            "model": openrouter_model,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ]
-        }
+        print("STATUS CODE:", response.status_code)
+        
+        if response.status_code != 200:
+            print("ERROR:", response.text)
+            continue
 
-        response_text = ""
-        try:
-            response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=90,
-            )
-            response.raise_for_status()
-            response_json = response.json()
-            response_text = ((response_json.get("choices") or [{}])[0].get("message") or {}).get("content", "")
-        except Exception as e:
-            print("OPENROUTER REQUEST FAILED FOR", req_id, ":", e)
+        raw = response.json()["choices"][0]["message"]["content"]
+        print("RAW RESPONSE:", raw[:300])
 
-        text = str(response_text).strip()
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-        text = text.strip()
-
-        print("RAW RESPONSE FOR", req_id, ":", text[:200])
+        raw = raw.strip()
+        raw = re.sub(r'^```json\s*', '', raw)
+        raw = re.sub(r'^```\s*', '', raw)
+        raw = re.sub(r'```$', '', raw)
+        raw = raw.strip()
 
         try:
-            parsed = json.loads(text)
-            if not isinstance(parsed, dict):
-                raise json.JSONDecodeError("Expected object", text, 0)
+            parsed = json.loads(raw)
         except Exception as e:
-            print("PARSE FAILED FOR", req_id, ":", e)
-            parsed = _default_developer_payload()
+            print("PARSE FAILED:", e)
+            print("FULL RAW:", raw)
+            parsed = {
+                "tasks": [],
+                "tech_stack": {
+                    "frontend": [], "backend": [],
+                    "database": [], "other": []
+                },
+                "complexity": {
+                    "level": "Medium", "score": 5,
+                    "reason": "Parse failed", "estimated_hours": 0
+                }
+            }
 
         results.append({
-            "id": req_id,
-            "description": description,
+            "id": req["id"],
+            "description": req["description"],
             "tasks": parsed.get("tasks", []),
-            "tech_stack": parsed.get("tech_stack", _default_developer_payload()["tech_stack"]),
-            "complexity": parsed.get("complexity", _default_developer_payload()["complexity"]),
+            "tech_stack": parsed.get("tech_stack", {}),
+            "complexity": parsed.get("complexity", {})
         })
 
     return jsonify(results)

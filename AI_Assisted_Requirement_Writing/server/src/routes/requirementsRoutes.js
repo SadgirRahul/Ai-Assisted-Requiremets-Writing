@@ -9,6 +9,7 @@ const {
   uploadAndGenerate,
   uploadAndGenerateAnthropic,
   generateRequirementsMain,
+  analyzeDeveloper,
 } = require("../controllers/requirementsController");
 
 // GET /api/health - Quick health check
@@ -31,5 +32,8 @@ router.post("/generate-anthropic", upload.single("file"), uploadAndGenerateAnthr
 
 // POST /api/generate-requirements - Main endpoint (extract text + generate requirements)
 router.post("/generate-requirements", upload.single("file"), generateRequirementsMain);
+
+// POST /api/analyze-developer - Analyze requirements and return developer tasks/stack/complexity
+router.post("/analyze-developer", analyzeDeveloper);
 
 module.exports = router;

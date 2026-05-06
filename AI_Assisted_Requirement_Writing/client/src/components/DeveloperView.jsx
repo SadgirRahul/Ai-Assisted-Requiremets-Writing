@@ -78,7 +78,7 @@ const DeveloperView = ({
       }
 
       totalTasks += tasks.length;
-      const reqId = String(analysis?.requirement_id || "");
+      const reqId = String(analysis?.id || analysis?.requirement_id || "");
       const stored = Array.isArray(taskProgress?.[reqId]) ? taskProgress[reqId] : [];
       completedTasks += stored.filter(Boolean).length;
     });
@@ -141,7 +141,7 @@ const DeveloperView = ({
         </div>
         <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-center">
           <p className="text-2xl font-bold leading-none text-white">
-            {stats.completedTasks} / {stats.totalTasks}
+            {stats.completedTasks} / {stats.totalTasks} tasks
           </p>
           <p className="mt-1 text-[11px] uppercase tracking-wide text-slate-300">Tasks Completed</p>
         </div>

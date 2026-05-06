@@ -4,7 +4,7 @@ import { DOMAIN_OPTIONS } from "./DomainSelect";
 import "./FileUpload.css";
 
 // Default `/api` uses Vite proxy in dev (same origin → no CORS). Override VITE_API_URL for production.
-const API_BASE_URL = import.meta.env.VITE_API_URL || "/api";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 const ACCEPTED_TYPES = (import.meta.env.VITE_ACCEPTED_FILE_TYPES || ".pdf,.doc,.docx").split(",");
 
 /**
@@ -44,7 +44,7 @@ const FileUpload = ({
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const response = await axios.post(`${API_BASE_URL}/detect-domain`, formData, {
+      const response = await axios.post(`${API_BASE_URL}/api/detect-domain`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
@@ -110,7 +110,7 @@ const FileUpload = ({
       formData.append("domain", domainOverride ?? selectedDomain ?? "");
 
       setStatus("Extracting text…");
-      const response = await axios.post(`${API_BASE_URL}/generate-requirements`, formData, {
+      const response = await axios.post(`${API_BASE_URL}/api/generate-requirements`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: (progressEvent) => {
           if (progressEvent.total) {
