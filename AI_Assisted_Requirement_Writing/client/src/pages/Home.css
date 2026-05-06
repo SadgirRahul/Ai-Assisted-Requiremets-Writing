@@ -88,44 +88,6 @@
   align-items: flex-start;
 }
 
-.output-panel-header .view-toggle {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-.view-toggle {
-  display: inline-flex;
-  border: 1.5px solid #d1d5db;
-  border-radius: 999px;
-  padding: 2px;
-  background: #f8fafc;
-  gap: 2px;
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.view-toggle-btn {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: #6b7280;
-  font-size: 0.8rem;
-  font-weight: 700;
-  padding: 6px 12px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.view-toggle-btn:hover {
-  color: #374151;
-}
-
-.view-toggle-btn.active {
-  background: #2563eb;
-  color: #ffffff;
-}
-
 .panel-body {
   padding: 20px 24px 24px;
   flex: 1;
@@ -183,11 +145,6 @@
   .output-panel-header {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .output-panel-header .view-toggle {
-    margin-left: 0;
-    width: max-content;
   }
 }
 

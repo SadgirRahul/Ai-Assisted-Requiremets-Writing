@@ -2,23 +2,26 @@ import argparse
 import io
 import json
 import os
+import requests
 import sys
 import threading
 from contextlib import redirect_stdout
+
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 try:
     from dotenv import load_dotenv
 except ImportError:
     load_dotenv = None
 
-from document_extract import extract_text
-from preprocess import preprocess_pdf_text
-from nlp_extractor import NLPExtractor
 from llm_client import LLMClient
-from requirements_generator import RequirementsGenerator
 
 # Default document shipped with the repo (same folder as app.py).
 DEFAULT_INPUT_FILE = "sample.pdf"
+
+app = Flask(__name__)
+CORS(app)
 
 
 def _backend_dir():
@@ -28,6 +31,142 @@ def _backend_dir():
 def _load_env():
     if load_dotenv:
         load_dotenv(os.path.join(_backend_dir(), ".env"))
+
+
+def _default_developer_payload() -> dict:
+    return {
+        "tasks": [],
+        "tech_stack": {
+            "frontend": [],
+            "backend": [],
+            "database": [],
+            "other": [],
+        },
+        "complexity": {
+            "level": "Medium",
+            "score": 5,
+            "reason": "Could not analyze",
+            "estimated_hours": 0,
+        },
+    }
+
+
+@app.route('/analyze-developer', methods=['POST'])
+def analyze_developer():
+    _load_env()
+
+    key = os.getenv("OPENROUTER_API_KEY", "NOT FOUND")
+    print("KEY LOADED:", key[:20] if len(key) > 20 else key)
+
+    data = request.get_json(silent=True) or {}
+    requirements = data.get('requirements', [])
+    domain = data.get('domain', 'General')
+
+    if not isinstance(requirements, list):
+        return jsonify({"error": "`requirements` must be an array"}), 400
+
+    llm_client = LLMClient()
+    openrouter_api_key = (llm_client.api_key or "").strip()
+    openrouter_model = (llm_client.model_name or "").strip() or "qwen/qwen3-8b"
+
+    if not openrouter_api_key:
+        return jsonify({"error": "OPENROUTER_API_KEY is not configured"}), 503
+
+    results = []
+
+    for req in requirements:
+        if not isinstance(req, dict):
+            continue
+        if str(req.get('type', '')).lower() != 'functional':
+            continue
+
+        req_id = req.get('id')
+        description = req.get('description', '')
+        priority = req.get('priority', '')
+
+        prompt = f"""You are a senior software engineer specializing in {domain} systems.
+
+Analyze this requirement and return ONLY a JSON object.
+No markdown. No code blocks. No explanation.
+Start your response with {{ and end with }}
+
+Requirement: {description}
+Priority: {priority}
+
+Return exactly this structure:
+{{
+  "tasks": [
+    "Specific developer task 1",
+    "Specific developer task 2", 
+    "Specific developer task 3",
+    "Specific developer task 4"
+  ],
+  "tech_stack": {{
+    "frontend": ["React", "Tailwind CSS"],
+    "backend": ["Node.js", "Express"],
+    "database": ["MongoDB"],
+    "other": ["JWT", "bcrypt"]
+  }},
+  "complexity": {{
+    "level": "Medium",
+    "score": 6,
+    "reason": "One sentence explaining complexity",
+    "estimated_hours": 12
+  }}
+}}"""
+
+        headers = {
+            "Authorization": f"Bearer {openrouter_api_key}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": openrouter_model,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ]
+        }
+
+        response_text = ""
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=90,
+            )
+            response.raise_for_status()
+            response_json = response.json()
+            response_text = ((response_json.get("choices") or [{}])[0].get("message") or {}).get("content", "")
+        except Exception as e:
+            print("OPENROUTER REQUEST FAILED FOR", req_id, ":", e)
+
+        text = str(response_text).strip()
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        text = text.strip()
+
+        print("RAW RESPONSE FOR", req_id, ":", text[:200])
+
+        try:
+            parsed = json.loads(text)
+            if not isinstance(parsed, dict):
+                raise json.JSONDecodeError("Expected object", text, 0)
+        except Exception as e:
+            print("PARSE FAILED FOR", req_id, ":", e)
+            parsed = _default_developer_payload()
+
+        results.append({
+            "id": req_id,
+            "description": description,
+            "tasks": parsed.get("tasks", []),
+            "tech_stack": parsed.get("tech_stack", _default_developer_payload()["tech_stack"]),
+            "complexity": parsed.get("complexity", _default_developer_payload()["complexity"]),
+        })
+
+    return jsonify(results)
 
 
 def pick_input_path_interactive() -> str | None:
@@ -60,6 +199,11 @@ def run_pipeline(input_path: str) -> int:
     """
     script_dir = _backend_dir()
     input_path = os.path.abspath(input_path)
+
+    from document_extract import extract_text
+    from preprocess import preprocess_pdf_text
+    from nlp_extractor import NLPExtractor
+    from requirements_generator import RequirementsGenerator
 
     print("AI-Assisted Requirements Writing System")
     print("=" * 50)

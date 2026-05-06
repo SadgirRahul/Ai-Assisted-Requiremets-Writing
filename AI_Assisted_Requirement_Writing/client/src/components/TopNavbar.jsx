@@ -1,16 +1,8 @@
 import React from "react";
 import "./TopNavbar.css";
 
-const STEPS = [
-  { id: 1, label: "Domain" },
-  { id: 2, label: "Upload" },
-  { id: 3, label: "Results" },
-  { id: 4, label: "Export" },
-];
-
-const TopNavbar = ({ currentStep, selectedDomain, hasResults, onExport, onReset }) => {
-  const isDone = (id) => id < currentStep;
-  const isActive = (id) => id === currentStep;
+const TopNavbar = ({ activeView, selectedDomain, hasResults, onSelectView, onExport, onReset }) => {
+  const isActive = (view) => view === activeView;
 
   return (
     <div className="topnav-wrap">
@@ -38,37 +30,49 @@ const TopNavbar = ({ currentStep, selectedDomain, hasResults, onExport, onReset 
           </span>
         </button>
 
-        <div className="topnav-steps" aria-label="Workflow steps">
-          {STEPS.map((step, idx) => (
-            <React.Fragment key={step.id}>
-              <div className="topnav-step">
-                <span
-                  className={[
-                    "topnav-step-circle",
-                    isDone(step.id) ? "done" : "",
-                    isActive(step.id) ? "active" : "",
-                  ].join(" ").trim()}
-                >
-                  {step.id}
-                </span>
-                <span
-                  className={[
-                    "topnav-step-label",
-                    isDone(step.id) ? "done" : "",
-                    isActive(step.id) ? "active" : "",
-                  ].join(" ").trim()}
-                >
-                  {step.label}
-                </span>
-              </div>
-              {idx < STEPS.length - 1 ? (
-                <span
-                  className={`topnav-step-line ${currentStep > step.id + 0 ? "done" : ""}`}
-                  aria-hidden="true"
-                />
-              ) : null}
-            </React.Fragment>
-          ))}
+        <div className="topnav-tabs" role="tablist" aria-label="Requirements view">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={isActive("list")}
+            className={`topnav-tab-btn${isActive("list") ? " active" : ""}`}
+            onClick={() => onSelectView?.("list")}
+          >
+            List
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={isActive("analysis")}
+            className={`topnav-tab-btn${isActive("analysis") ? " active" : ""}`}
+            onClick={() => onSelectView?.("analysis")}
+            disabled={!hasResults}
+            title={!hasResults ? "Generate requirements first" : ""}
+          >
+            Analysis
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={isActive("tree")}
+            className={`topnav-tab-btn${isActive("tree") ? " active" : ""}`}
+            onClick={() => onSelectView?.("tree")}
+            disabled={!hasResults}
+            title={!hasResults ? "Generate requirements first" : ""}
+          >
+            Tree
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={isActive("developer")}
+            className={`topnav-tab-btn${isActive("developer") ? " active" : ""}`}
+            onClick={() => onSelectView?.("developer")}
+            disabled={!hasResults}
+            title={!hasResults ? "Generate requirements first" : ""}
+          >
+            Developer View
+          </button>
         </div>
 
         <div className="topnav-right">
