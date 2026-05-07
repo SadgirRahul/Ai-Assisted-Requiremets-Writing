@@ -404,14 +404,15 @@ const Home = () => {
           </div>
 
           <div className="panel-body">
-            {outputPanelTab === PANEL_TAB.GENERATED ? (
+            <div hidden={outputPanelTab !== PANEL_TAB.GENERATED}>
               <RequirementsOutput
                 requirements={requirements}
                 isLoading={status === STATUS.LOADING}
                 view={outputView}
                 showExportButton={false}
               />
-            ) : (
+            </div>
+            <div hidden={outputPanelTab !== PANEL_TAB.DEVELOPER}>
               <DeveloperView
                 functionalRequirements={functionalRequirements}
                 developerData={developerData}
@@ -423,7 +424,7 @@ const Home = () => {
                 taskProgress={taskProgress}
                 onToggleTask={handleToggleTaskCheck}
               />
-            )}
+            </div>
           </div>
         </section>
 

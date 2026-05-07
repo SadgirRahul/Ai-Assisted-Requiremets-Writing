@@ -55,7 +55,6 @@ const DeveloperView = ({
 
   const stats = useMemo(() => {
     const analyzed = Array.isArray(developerData) ? developerData.length : 0;
-    let totalEstimatedHours = 0;
     let highComplexity = 0;
     let mediumComplexity = 0;
     let totalTasks = 0;
@@ -64,12 +63,8 @@ const DeveloperView = ({
     (developerData || []).forEach((analysis) => {
       const complexity = analysis?.complexity || {};
       const level = String(complexity?.level || "").trim();
-      const hours = Number(complexity?.estimated_hours);
       const tasks = toArray(analysis?.tasks);
 
-      if (Number.isFinite(hours)) {
-        totalEstimatedHours += hours;
-      }
       if (level === "High") {
         highComplexity += 1;
       }
@@ -85,7 +80,6 @@ const DeveloperView = ({
 
     return {
       analyzed,
-      totalEstimatedHours,
       highComplexity,
       mediumComplexity,
       completedTasks,
@@ -122,14 +116,10 @@ const DeveloperView = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 rounded-xl bg-gradient-to-br from-[#1a1a2e] to-[#16213e] p-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 rounded-xl bg-gradient-to-br from-[#1a1a2e] to-[#16213e] p-3 md:grid-cols-4">
         <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-center">
           <p className="text-2xl font-bold leading-none text-white">{stats.analyzed}</p>
           <p className="mt-1 text-[11px] uppercase tracking-wide text-slate-300">Total FR Analyzed</p>
-        </div>
-        <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-center">
-          <p className="text-2xl font-bold leading-none text-white">{stats.totalEstimatedHours}</p>
-          <p className="mt-1 text-[11px] uppercase tracking-wide text-slate-300">Total Estimated Hours</p>
         </div>
         <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-center">
           <p className="text-2xl font-bold leading-none text-white">{stats.highComplexity}</p>
@@ -174,7 +164,6 @@ const DeveloperView = ({
             const techStack = analysis?.tech_stack || {};
             const complexity = analysis?.complexity || {};
             const complexityLevel = String(complexity?.level || "Medium");
-            const estimatedHours = complexity?.estimated_hours ?? 0;
 
             return (
               <article key={`${reqId}-${index}`} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -189,9 +178,6 @@ const DeveloperView = ({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${complexityClass(complexityLevel)}`}>
                       {complexityLevel}
-                    </span>
-                    <span className="inline-flex rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                      ~{estimatedHours} hrs
                     </span>
                   </div>
                 </div>
